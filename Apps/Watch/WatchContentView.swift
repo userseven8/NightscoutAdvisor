@@ -12,55 +12,63 @@ struct WatchContentView: View {
     var body: some View {
         NavigationStack {
             if let sum = activeSummary {
+                let count = sum.effectiveAdjustmentsCount
                 ScrollView {
-                    VStack(spacing: 10) {
-                        // Top Glanceable TIR & Low (matches chosen rolling window)
-                        HStack(alignment: .lastTextBaseline) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text("\(sum.effectiveDays)d In Range")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text(String(format: "%.0f%%", sum.effectiveTIR))
-                                    .font(.system(.title2, design: .rounded).monospacedDigit().weight(.bold))
-                                    .foregroundStyle(sum.effectiveTIR >= 70.0 ? Color.green : Color.primary)
-                            }
+                    VStack(spacing: 8) {
+                        // 1. Advisor Status Headline
+                        HStack(spacing: 6) {
+                            Image(systemName: count == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
+                                .font(.callout)
+                                .foregroundStyle(count == 0 ? Color.green : Color.orange)
+                            Text(count == 0 ? "All In Sync" : "\(count) Update\(count == 1 ? "" : "s")")
+                                .font(.footnote.weight(.bold))
                             Spacer()
-                            VStack(alignment: .trailing, spacing: 0) {
-                                Text("Low")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text(String(format: "%.1f%%", sum.effectiveTBR))
-                                    .font(.callout.monospacedDigit().weight(.semibold))
-                                    .foregroundStyle(sum.effectiveTBR <= 4.0 ? Color.secondary : Color.red)
-                            }
                         }
                         .padding(.horizontal, 4)
 
+                        // If adjustments exist, surface the exact action lines first
+                        if !sum.effectiveActions.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(sum.effectiveActions, id: \.self) { act in
+                                    Text(act)
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .foregroundStyle(Color.orange)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            .padding(6)
+                            .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                        }
+
                         Divider()
 
-                        // 4 Clean Setting Rows
+                        // 2. Clean 4-Schedule Overview
                         VStack(spacing: 6) {
-                            SimpleWatchRow(
-                                label: "ISF",
-                                value: sum.headlineISF,
-                                isAligned: sum.isfAligned
-                            )
+                            SimpleWatchRow(label: "ISF", value: sum.headlineISF, isAligned: sum.isfAligned)
                             SimpleWatchRow(
                                 label: "Basal",
-                                value: sum.headlineBasal ?? (sum.basalAligned ? "OK" : "Adjust"),
+                                value: sum.headlineBasal ?? (sum.basalAligned ? "OK" : "Review"),
                                 isAligned: sum.basalAligned
                             )
                             SimpleWatchRow(
                                 label: "Carbs",
-                                value: sum.headlineCR ?? (sum.crAligned ? "OK" : "Adjust"),
+                                value: sum.headlineCR ?? (sum.crAligned ? "OK" : "Review"),
                                 isAligned: sum.crAligned
                             )
-                            SimpleWatchRow(
-                                label: "Target",
-                                value: sum.headlineTarget,
-                                isAligned: sum.targetAligned
-                            )
+                            SimpleWatchRow(label: "Target", value: sum.headlineTarget, isAligned: sum.targetAligned)
                         }
+
+                        Divider()
+
+                        // Subtle Rolling Window Context
+                        HStack {
+                            Text("\(sum.effectiveDays)d TIR \(String(format: "%.0f%%", sum.effectiveTIR))")
+                            Spacer()
+                            Text("Low \(String(format: "%.1f%%", sum.effectiveTBR))")
+                        }
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
 
                         Button {
                             Task { await model.refreshOnWatch() }
@@ -72,7 +80,7 @@ struct WatchContentView: View {
                                     .font(.caption)
                             }
                         }
-                        .padding(.top, 4)
+                        .padding(.top, 2)
                     }
                     .padding(.horizontal, 2)
                 }

@@ -203,6 +203,20 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
     }
 
     public func makeWatchSummary() -> WatchAdvisorSummary {
+        var actions: [String] = []
+        for s in isfSchedule where !s.status.isAlignedOrInCI {
+            actions.append("\(s.timeString) ISF → \(displayUnit.formatISF(s.recommendedMgdLPerU, includeUnit: false))")
+        }
+        for b in basalSchedule where !b.status.isAlignedOrInCI {
+            actions.append(String(format: "%@ Basal → %.2f", b.timeString, b.recommendedUnitsPerHour))
+        }
+        for c in carbRatioSchedule where !c.status.isAlignedOrInCI {
+            actions.append(String(format: "%@ Carbs → 1:%.1f", c.timeString, c.recommendedGramsPerUnit))
+        }
+        for t in targetSchedule where !t.status.isAlignedOrInCI {
+            actions.append("\(t.timeString) Target → \(displayUnit.formatBG(t.recommendedLowMgdL))–\(displayUnit.formatBG(t.recommendedHighMgdL))")
+        }
+
         let firstBasalChange = basalSchedule.first { !$0.status.isAlignedOrInCI }
         let firstCRChange = carbRatioSchedule.first { !$0.status.isAlignedOrInCI }
 
@@ -232,6 +246,8 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
             gmiRolling: statsRolling.gmiPercent,
             dampingZeta: stability.dampingRatioZeta,
             alignedSections: alignedSectionCount,
+            adjustmentsCount: actions.count,
+            actionItems: actions,
             isfAligned: isfSchedule.allSatisfy(\.status.isAlignedOrInCI),
             basalAligned: basalSchedule.allSatisfy(\.status.isAlignedOrInCI),
             crAligned: carbRatioSchedule.allSatisfy(\.status.isAlignedOrInCI),
@@ -258,6 +274,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
     public let gmiRolling: Double
     public let dampingZeta: Double
     public let alignedSections: Int
+    public let adjustmentsCount: Int?
+    public let actionItems: [String]?
     public let isfAligned: Bool
     public let basalAligned: Bool
     public let crAligned: Bool
@@ -270,6 +288,18 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
     public var effectiveDays: Int { rollingDays ?? 30 }
     public var effectiveTIR: Double { tirRolling ?? tir7d }
     public var effectiveTBR: Double { tbrRolling ?? tbr7d }
+    public var effectiveAdjustmentsCount: Int {
+        adjustmentsCount ?? max(0, 4 - alignedSections)
+    }
+    public var effectiveActions: [String] {
+        if let items = actionItems, !items.isEmpty { return items }
+        var fallback: [String] = []
+        if !isfAligned { fallback.append("ISF → \(headlineISF)") }
+        if !basalAligned, let b = headlineBasal { fallback.append("Basal \(b)") }
+        if !crAligned, let c = headlineCR { fallback.append("Carbs \(c)") }
+        if !targetAligned { fallback.append("Target → \(headlineTarget)") }
+        return fallback
+    }
 
     public init(
         generatedAt: Date,
@@ -283,6 +313,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
         gmiRolling: Double,
         dampingZeta: Double,
         alignedSections: Int,
+        adjustmentsCount: Int? = 0,
+        actionItems: [String]? = [],
         isfAligned: Bool,
         basalAligned: Bool,
         crAligned: Bool,
@@ -303,6 +335,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
         self.gmiRolling = gmiRolling
         self.dampingZeta = dampingZeta
         self.alignedSections = alignedSections
+        self.adjustmentsCount = adjustmentsCount
+        self.actionItems = actionItems
         self.isfAligned = isfAligned
         self.basalAligned = basalAligned
         self.crAligned = crAligned
@@ -326,6 +360,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
             gmiRolling: 6.4,
             dampingZeta: 1.04,
             alignedSections: 4,
+            adjustmentsCount: 0,
+            actionItems: [],
             isfAligned: true,
             basalAligned: true,
             crAligned: true,
