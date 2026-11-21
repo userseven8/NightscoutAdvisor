@@ -1,8 +1,8 @@
 import Foundation
 
 /// Generalized 4-Stage Coupled Insulin-Kinetics & Stochastic Control Solver.
-/// Operates dynamically on any user's Nightscout profile schedules, units (mg/dL or mmol/L),
-/// timezone, insulin kinetics curve, and pump hardware step—with zero heuristic guardrails.
+/// Matches the validated Python reference physics & statistical estimators across all 4 stages
+/// while operating dynamically on any Nightscout user's schedule blocks and units.
 public enum TherapyAdvisorSolver {
 
     public enum SolverError: LocalizedError {
@@ -19,8 +19,6 @@ public enum TherapyAdvisorSolver {
         }
     }
 
-    // MARK: - Main Entry Point
-
     public static func solve(
         bundle: NightscoutTelemetryBundle,
         config: TherapySettingsConfig
@@ -29,7 +27,9 @@ public enum TherapyAdvisorSolver {
         guard cgm.count >= 24 else { throw SolverError.emptyCGMData }
 
         let sortedProfiles = bundle.profiles.sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
-        guard let activeProfile = sortedProfiles.last else { throw SolverError.missingActiveProfile }
+        guard let activeProfile = bundle.activeProfile ?? sortedProfiles.last else {
+            throw SolverError.missingActiveProfile
+        }
 
         let tz = TimeZone(identifier: activeProfile.timeZoneIdentifier) ?? .current
         var calendar = Calendar(identifier: .gregorian)
@@ -45,10 +45,14 @@ public enum TherapyAdvisorSolver {
         let maxTS = cgm.last!.timestamp
         let spanDays = max(1.0, (maxTS - minTS) / 86400.0)
 
-        // Helper: minute of local day [0...1439]
         func localMinuteOfDay(_ ts: TimeInterval) -> Int {
             let comps = calendar.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: ts))
             return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        }
+
+        func localSecondOfDay(_ ts: TimeInterval) -> Int {
+            let comps = calendar.dateComponents([.hour, .minute, .second], from: Date(timeIntervalSince1970: ts))
+            return (comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0)
         }
 
         func localDayKey(_ ts: TimeInterval) -> String {
@@ -56,70 +60,75 @@ public enum TherapyAdvisorSolver {
             return String(format: "%04d-%02d-%02d", comps.year ?? 2026, comps.month ?? 1, comps.day ?? 1)
         }
 
-        // Historical profile lookup at timestamp t
+        let profTimes = sortedProfiles.map(\.effectiveTimestamp)
         func profileAt(_ ts: TimeInterval) -> HistoricalProfileVersion {
+            guard !sortedProfiles.isEmpty else { return activeProfile }
             var lo = 0
-            var hi = sortedProfiles.count - 1
-            var ans = 0
-            while lo <= hi {
+            var hi = profTimes.count
+            while lo < hi {
                 let mid = (lo + hi) / 2
-                if sortedProfiles[mid].effectiveTimestamp <= ts {
-                    ans = mid
+                if profTimes[mid] <= ts {
                     lo = mid + 1
                 } else {
-                    hi = mid - 1
+                    hi = mid
                 }
             }
-            return sortedProfiles[ans]
+            return sortedProfiles[max(0, lo - 1)]
         }
 
-        func lookupSegment(_ segments: [ScheduleSegment], minuteOfDay: Int, fallback: Double) -> Double {
+        func evalSegmentSec(_ segments: [ScheduleSegment], secondOfDay: Int, fallback: Double) -> Double {
             guard !segments.isEmpty else { return fallback }
             var val = segments[0].value
-            for seg in segments where minuteOfDay >= seg.startMinutes {
-                val = seg.value
+            for seg in segments {
+                if seg.startMinutes * 60 <= secondOfDay {
+                    val = seg.value
+                } else {
+                    break
+                }
             }
             return val
         }
 
-        func lookupTargetMid(_ segments: [TargetScheduleSegment], minuteOfDay: Int, fallback: Double = 110.0) -> Double {
+        func evalTargetMidSec(_ segments: [TargetScheduleSegment], secondOfDay: Int, fallback: Double = 117.5) -> Double {
             guard !segments.isEmpty else { return fallback }
             var val = segments[0].midMgdL
-            for seg in segments where minuteOfDay >= seg.startMinutes {
-                val = seg.midMgdL
+            for seg in segments {
+                if seg.startMinutes * 60 <= secondOfDay {
+                    val = seg.midMgdL
+                } else {
+                    break
+                }
             }
             return val
         }
 
         let sortedOverrides = bundle.targetOverrides.sorted { $0.startTimestamp < $1.startTimestamp }
+        let ovStarts = sortedOverrides.map(\.startTimestamp)
         func activeTargetMid(at ts: TimeInterval) -> Double {
-            // Binary search latest override starting <= ts
             var lo = 0
-            var hi = sortedOverrides.count - 1
-            var idx = -1
-            while lo <= hi {
+            var hi = ovStarts.count
+            while lo < hi {
                 let mid = (lo + hi) / 2
-                if sortedOverrides[mid].startTimestamp <= ts {
-                    idx = mid
+                if ovStarts[mid] <= ts {
                     lo = mid + 1
                 } else {
-                    hi = mid - 1
+                    hi = mid
                 }
             }
-            if idx >= 0 {
-                let kStart = max(0, idx - 4)
-                for k in stride(from: idx, through: kStart, by: -1) {
-                    let ov = sortedOverrides[k]
-                    if ov.startTimestamp <= ts && ts < ov.endTimestamp {
-                        return ov.midMgdL
-                    }
-                }
+            let idx = lo - 1
+            if idx >= 0 && sortedOverrides[idx].startTimestamp <= ts && ts < sortedOverrides[idx].endTimestamp {
+                return sortedOverrides[idx].midMgdL
             }
             let prof = profileAt(ts)
-            return lookupTargetMid(prof.targetSchedule, minuteOfDay: localMinuteOfDay(ts))
+            return evalTargetMidSec(prof.targetSchedule, secondOfDay: localSecondOfDay(ts))
         }
 
-        // Build exact 5-minute Insulin Kinetics Timeline across historical profiles + temp basals + boluses
+        let exercises = bundle.exerciseWindows
+        func inExerciseWindow(from tStart: TimeInterval, to tEnd: TimeInterval) -> Bool {
+            exercises.contains { min(tEnd, $0.endTimestamp) - max(tStart, $0.startTimestamp) >= 900.0 }
+        }
+
+        // Exact 5-minute discrete exponential PK timeline
         let pkTimeline = InsulinKineticsTimeline(
             startTimestamp: minTS,
             endTimestamp: maxTS,
@@ -129,50 +138,51 @@ public enum TherapyAdvisorSolver {
             tempBasals: bundle.tempBasals,
             scheduledBasalRateAt: { ts in
                 let prof = profileAt(ts)
-                return lookupSegment(prof.basalSchedule, minuteOfDay: localMinuteOfDay(ts), fallback: 0.1)
+                return evalSegmentSec(prof.basalSchedule, secondOfDay: localSecondOfDay(ts), fallback: 0.10)
             }
         )
 
-        // Fast binary-search CGM interpolation
-        let cgmTimestamps = cgm.map(\.timestamp)
-        func bgAt(_ ts: TimeInterval, maxGapSeconds: TimeInterval = 1200.0) -> Double? {
+        let cgmTimes = cgm.map(\.timestamp)
+        func bgAt(_ ts: TimeInterval, maxGapSeconds: TimeInterval = 900.0) -> Double? {
             var lo = 0
-            var hi = cgmTimestamps.count - 1
-            while lo <= hi {
+            var hi = cgmTimes.count
+            while lo < hi {
                 let mid = (lo + hi) / 2
-                if cgmTimestamps[mid] < ts {
+                if cgmTimes[mid] < ts {
                     lo = mid + 1
                 } else {
-                    hi = mid - 1
+                    hi = mid
                 }
             }
-            var bestDist = TimeInterval.greatestFiniteMagnitude
             var bestVal: Double?
-            for cand in [lo - 1, lo] where cand >= 0 && cand < cgm.count {
-                let d = abs(cgm[cand].timestamp - ts)
-                if d < bestDist {
-                    bestDist = d
-                    bestVal = cgm[cand].sgvMgdL
+            var minDist = TimeInterval.greatestFiniteMagnitude
+            let startIdx = max(0, lo - 2)
+            let endIdx = min(cgm.count, lo + 3)
+            for i in startIdx..<endIdx {
+                let d = abs(cgm[i].timestamp - ts)
+                if d < minDist && d <= maxGapSeconds {
+                    minDist = d
+                    bestVal = cgm[i].sgvMgdL
                 }
             }
-            return bestDist <= maxGapSeconds ? bestVal : nil
+            return bestVal
         }
 
         let sortedCarbs = bundle.carbs.sorted { $0.timestamp < $1.timestamp }
         let sortedBoluses = bundle.boluses.sorted { $0.timestamp < $1.timestamp }
 
-        func isFasting(from t1: TimeInterval, to t2: TimeInterval) -> Bool {
+        // Respects declared Nightscout absorptionTime (45m for <=40m rescue carbs, >=3.5h for standard meals)
+        func hasActiveGutCarbs(from t1: TimeInterval, to t2: TimeInterval) -> Bool {
             for c in sortedCarbs {
-                let gutClearEnd = c.timestamp + max(10800.0, c.absorptionSeconds)
-                if c.timestamp <= t2 && gutClearEnd > t1 {
-                    return false
-                }
                 if c.timestamp > t2 { break }
+                let effAbs = c.absorptionSeconds <= 2400.0 ? 2700.0 : max(12600.0, c.absorptionSeconds)
+                if c.timestamp <= t2 && (c.timestamp + effAbs) > t1 {
+                    return true
+                }
             }
-            return true
+            return false
         }
 
-        // Pre-extract gut-clear 1-hour fasting windows mapped to the user's active basal blocks
         let userBasalBlocks: [ScheduleSegment] = activeProfile.basalSchedule.isEmpty
             ? [ScheduleSegment(startMinutes: 0, timeString: "00:00", value: 0.10)]
             : activeProfile.basalSchedule
@@ -185,124 +195,6 @@ public enum TherapyAdvisorSolver {
             return idx
         }
 
-        struct FastingHourSample {
-            let blockIdx: Int
-            let absorbedInsulin: Double
-            let deltaBG: Double
-        }
-
-        var fastingSamples: [FastingHourSample] = []
-        var cursor = minTS + 3600.0
-        while cursor + 3600.0 <= maxTS {
-            let tEnd = cursor + 3600.0
-            if isFasting(from: cursor, to: tEnd),
-               let bg1 = bgAt(cursor, maxGapSeconds: 900.0),
-               let bg2 = bgAt(tEnd, maxGapSeconds: 900.0),
-               bg1 >= 75.0, bg2 >= 75.0 {
-                let iAbs = pkTimeline.absorbedInsulin(from: cursor, to: tEnd)
-                let midMin = localMinuteOfDay(cursor + 1800.0)
-                let bIdx = blockIndex(for: midMin, in: userBasalBlocks)
-                fastingSamples.append(FastingHourSample(blockIdx: bIdx, absorbedInsulin: iAbs, deltaBG: bg2 - bg1))
-            }
-            cursor += 1800.0 // 30-min stride
-        }
-
-        // Pre-identify clean correction bolus episodes (zero overlapping carbs)
-        struct CorrectionCandidate {
-            let timestamp: TimeInterval
-            let nadirTimestamp: TimeInterval
-            let bgDrop: Double
-            let absorbedInsulin: Double
-        }
-
-        var correctionCandidates: [CorrectionCandidate] = []
-        var lastEpisodeTS: TimeInterval = -1e12
-        for bol in sortedBoluses where bol.units >= 0.15 {
-            let bt = bol.timestamp
-            if bt - lastEpisodeTS < 7200.0 { continue }
-
-            var carbContaminated = false
-            for c in sortedCarbs {
-                let preClear = max(9000.0, c.absorptionSeconds)
-                if (c.timestamp <= bt && bt - c.timestamp < preClear) ||
-                   (c.timestamp > bt && c.timestamp - bt < 12600.0) {
-                    carbContaminated = true
-                    break
-                }
-                if c.timestamp > bt + 12600.0 { break }
-            }
-            if carbContaminated { continue }
-
-            guard let bg0 = bgAt(bt, maxGapSeconds: 900.0), bg0 >= 145.0 else { continue }
-            let windowPts = cgm.filter { $0.timestamp >= bt + 1800.0 && $0.timestamp <= bt + 12600.0 }
-            guard windowPts.count >= 6,
-                  let nadirPt = windowPts.min(by: { $0.sgvMgdL < $1.sgvMgdL }) else { continue }
-
-            let drop = bg0 - nadirPt.sgvMgdL
-            guard drop >= 25.0 else { continue }
-            let iAbs = pkTimeline.absorbedInsulin(from: bt, to: nadirPt.timestamp)
-            correctionCandidates.append(
-                CorrectionCandidate(
-                    timestamp: bt,
-                    nadirTimestamp: nadirPt.timestamp,
-                    bgDrop: drop,
-                    absorbedInsulin: iAbs
-                )
-            )
-            lastEpisodeTS = bt
-        }
-
-        // MARK: - Stage 1 & Stage 2 Coupled Fixed-Point Iteration (ISF <-> EGP Basal)
-
-        let profileFallbackISF = activeProfile.isfSchedule.first?.value ?? 100.0
-        var workingISF = profileFallbackISF
-        var blockMedianEGP = Dictionary(uniqueKeysWithValues: userBasalBlocks.enumerated().map { ($0.offset, $0.element.value) })
-
-        func integrateBasalMap(_ rateByBlock: [Int: Double], from t1: TimeInterval, to t2: TimeInterval) -> Double {
-            guard t2 > t1 else { return 0.0 }
-            let steps = max(1, Int((t2 - t1) / 300.0))
-            let dtHours = ((t2 - t1) / Double(steps)) / 3600.0
-            var total = 0.0
-            for s in 0..<steps {
-                let tm = t1 + (Double(s) + 0.5) * ((t2 - t1) / Double(steps))
-                let bIdx = blockIndex(for: localMinuteOfDay(tm), in: userBasalBlocks)
-                total += (rateByBlock[bIdx] ?? 0.1) * dtHours
-            }
-            return total
-        }
-
-        var solvedEpisodeISFs: [(ts: TimeInterval, isf: Double)] = []
-
-        for _ in 0..<6 {
-            for bIdx in 0..<userBasalBlocks.count {
-                let fluxes = fastingSamples
-                    .filter { $0.blockIdx == bIdx }
-                    .map { $0.absorbedInsulin + ($0.deltaBG / workingISF) }
-                    .sorted()
-                if fluxes.count >= 4 {
-                    blockMedianEGP[bIdx] = max(0.0, percentile(fluxes, p: 0.50))
-                }
-            }
-
-            var iterISFs: [(ts: TimeInterval, isf: Double)] = []
-            for ep in correctionCandidates {
-                let egpNeed = integrateBasalMap(blockMedianEGP, from: ep.timestamp, to: ep.nadirTimestamp)
-                let netCorr = ep.absorbedInsulin - egpNeed
-                if netCorr >= 0.12 {
-                    let val = ep.bgDrop / netCorr
-                    if val >= 8.0 && val <= 600.0 {
-                        iterISFs.append((ep.timestamp, val))
-                    }
-                }
-            }
-            solvedEpisodeISFs = iterISFs
-            if iterISFs.count >= 2 {
-                let meanLog = iterISFs.map { log($0.isf) }.reduce(0.0, +) / Double(iterISFs.count)
-                workingISF = exp(meanLog)
-            }
-        }
-
-        // Round ISF cleanly in the display unit's natural resolution (nearest 5 mg/dL or nearest 0.1 mmol/L)
         func roundISFToGrid(_ mgdLPerU: Double) -> Double {
             if displayUnit == .mmolL {
                 let mmolVal = (mgdLPerU / BGUnit.mmolConversionFactor * 10.0).rounded() / 10.0
@@ -312,20 +204,129 @@ public enum TherapyAdvisorSolver {
             }
         }
 
-        let globalGeomMeanISF = workingISF
-        let globalRecISF = solvedEpisodeISFs.isEmpty ? profileFallbackISF : roundISFToGrid(globalGeomMeanISF)
+        // MARK: - Coupled Solvers 1 & 2 (Exact Kinetic ISF <-> Fasting EGP Basal)
 
-        let (globalISFCILow, globalISFCIHigh): (Double, Double) = {
-            let vals = solvedEpisodeISFs.map(\.isf)
-            guard vals.count >= 2 else {
-                return (globalRecISF * 0.85, globalRecISF * 1.15)
+        let curISF = activeProfile.isfSchedule.first?.value ?? 100.0
+        var recISF = curISF
+        var geomISF = curISF
+
+        // Build isolated correction bolus clusters (boluses without concurrent carbs within +-10m)
+        let corrTreatments = sortedBoluses.filter { bol in
+            !sortedCarbs.contains { abs($0.timestamp - bol.timestamp) < 600.0 }
+        }
+        var corrClusters: [[BolusEvent]] = []
+        var curCluster: [BolusEvent] = []
+        for bol in corrTreatments {
+            if curCluster.isEmpty || bol.timestamp - curCluster.last!.timestamp <= 2700.0 {
+                curCluster.append(bol)
+            } else {
+                corrClusters.append(curCluster)
+                curCluster = [bol]
             }
-            return logBootstrapCI(vals, seed: 42)
-        }()
+        }
+        if !curCluster.isEmpty {
+            corrClusters.append(curCluster)
+        }
 
-        // Build ISF Schedule mapped onto user's active ISF blocks
+        var basalSamplesByBlock: [Int: [Double]] = [:]
+        var egpMedByBlock: [Int: Double] = [:]
+        var solvedEpisodeISFs: [(ts: TimeInterval, isf: Double)] = []
+
+        func integrateBasalMap(_ rateByBlock: [Int: Double], fallback: Double, from t1: TimeInterval, to t2: TimeInterval) -> Double {
+            guard t2 > t1 else { return 0.0 }
+            var tot = 0.0
+            var tt = t1
+            while tt < t2 {
+                let nxt = min(t2, tt + 300.0)
+                let midMin = localMinuteOfDay(0.5 * (tt + nxt))
+                let bIdx = blockIndex(for: midMin, in: userBasalBlocks)
+                tot += (rateByBlock[bIdx] ?? fallback) * ((nxt - tt) / 3600.0)
+                tt = nxt
+            }
+            return tot
+        }
+
+        let diaSeconds = effectiveConfig.diaMinutes * 60.0
+        let startFastingT = ceil((minTS + diaSeconds) / 1800.0) * 1800.0
+
+        for _ in 0..<4 {
+            basalSamplesByBlock = [:]
+            var curT = startFastingT
+            while curT + 3600.0 <= maxTS {
+                let t1 = curT
+                let t2 = curT + 3600.0
+                curT += 1800.0
+                if hasActiveGutCarbs(from: t1, to: t2) { continue }
+                if inExerciseWindow(from: t1 - 1800.0, to: t2) { continue }
+                guard let bg1 = bgAt(t1, maxGapSeconds: 600.0),
+                      let bg2 = bgAt(t2, maxGapSeconds: 600.0) else { continue }
+                // Normoglycemic start (70..180); retain drops down to 40 mg/dL to avoid hypo survivorship bias
+                guard bg1 >= 70.0, bg1 <= 180.0, bg2 >= 40.0, bg2 <= 180.0 else { continue }
+
+                let iFlux = pkTimeline.absorbedInsulin(from: t1, to: t2) + ((bg2 - bg1) / recISF)
+                let bIdx = blockIndex(for: localMinuteOfDay(t1), in: userBasalBlocks)
+                basalSamplesByBlock[bIdx, default: []].append(iFlux)
+            }
+
+            egpMedByBlock = [:]
+            for (bIdx, vals) in basalSamplesByBlock where !vals.isEmpty {
+                egpMedByBlock[bIdx] = percentile(vals.sorted(), p: 0.50)
+            }
+
+            var iterEpisodes: [(ts: TimeInterval, isf: Double)] = []
+            var lastISFNadirTS: TimeInterval = 0.0
+
+            for cl in corrClusters {
+                let tStart = cl[0].timestamp
+                let totalBol = cl.reduce(0.0) { $0 + $1.units }
+                if tStart <= lastISFNadirTS || totalBol < 0.15 { continue }
+                if hasActiveGutCarbs(from: tStart, to: tStart + 3600.0) { continue }
+                guard let bgBolus = bgAt(tStart, maxGapSeconds: 600.0), bgBolus >= 165.0 else { continue }
+
+                // Truncate nadir search prior to any post-drop low-BG rescue carb rather than discarding episode
+                let laterCarbs = sortedCarbs.filter { $0.timestamp > tStart + 3600.0 && $0.timestamp <= tStart + 14400.0 }
+                let searchEnd: TimeInterval
+                if let firstC = laterCarbs.first {
+                    guard let bgAtC = bgAt(firstC.timestamp, maxGapSeconds: 600.0),
+                          bgAtC < 90.0,
+                          firstC.grams <= 16.0 else {
+                        continue
+                    }
+                    searchEnd = firstC.timestamp
+                } else {
+                    searchEnd = tStart + 14400.0
+                }
+
+                let cgmAfter = cgm.filter { $0.timestamp >= tStart + 3600.0 && $0.timestamp <= searchEnd }
+                guard let nadirPt = cgmAfter.min(by: { $0.sgvMgdL < $1.sgvMgdL }) else { continue }
+                let drop = bgBolus - nadirPt.sgvMgdL
+                if drop < 25.0 || inExerciseWindow(from: tStart - 1800.0, to: nadirPt.timestamp) {
+                    continue
+                }
+
+                let iAbsWin = pkTimeline.absorbedInsulin(from: tStart, to: nadirPt.timestamp)
+                let egpOffset = integrateBasalMap(egpMedByBlock, fallback: 0.25, from: tStart, to: nadirPt.timestamp)
+                let netIAbs = iAbsWin - egpOffset
+                if netIAbs > 0.12 {
+                    let epISF = drop / netIAbs
+                    if epISF >= 15.0 && epISF <= 500.0 {
+                        iterEpisodes.append((tStart, epISF))
+                        lastISFNadirTS = nadirPt.timestamp
+                    }
+                }
+            }
+
+            solvedEpisodeISFs = iterEpisodes
+            if !iterEpisodes.isEmpty {
+                let meanLog = iterEpisodes.map { log($0.isf) }.reduce(0.0, +) / Double(iterEpisodes.count)
+                geomISF = exp(meanLog)
+                recISF = roundISFToGrid(geomISF)
+            }
+        }
+
+        // Build ISF Schedule Recommendations
         let userISFBlocks = activeProfile.isfSchedule.isEmpty
-            ? [ScheduleSegment(startMinutes: 0, timeString: "00:00", value: profileFallbackISF)]
+            ? [ScheduleSegment(startMinutes: 0, timeString: "00:00", value: curISF)]
             : activeProfile.isfSchedule
 
         var isfRecommendations: [ISFRecommendation] = []
@@ -337,38 +338,46 @@ public enum TherapyAdvisorSolver {
                 return m >= seg.startMinutes && m < endMin
             }.map(\.isf)
 
-            // Use block-specific episodes if N >= 3, otherwise pool with global geometric estimator
             let usedEps = blockEps.count >= 3 ? blockEps : solvedEpisodeISFs.map(\.isf)
-            let geom: Double
+            let geomVal: Double
             let recVal: Double
             let ciLo: Double
             let ciHi: Double
-            if usedEps.count >= 2 {
-                geom = exp(usedEps.map { log($0) }.reduce(0, +) / Double(usedEps.count))
-                recVal = roundISFToGrid(geom)
-                (ciLo, ciHi) = logBootstrapCI(usedEps, seed: 100 + idx)
+            if !usedEps.isEmpty {
+                geomVal = exp(usedEps.map { log($0) }.reduce(0.0, +) / Double(usedEps.count))
+                recVal = roundISFToGrid(geomVal)
+                let empMin = usedEps.min() ?? recVal
+                let empMax = usedEps.max() ?? recVal
+                if usedEps.count >= 2 {
+                    let (bLo, bHi) = logBootstrapCI(usedEps, seed: 100 + idx)
+                    ciLo = min(empMin, bLo)
+                    ciHi = max(empMax, bHi)
+                } else {
+                    ciLo = min(empMin, recVal * 0.85)
+                    ciHi = max(empMax, recVal * 1.15)
+                }
             } else {
-                geom = seg.value
+                geomVal = seg.value
                 recVal = seg.value
-                ciLo = seg.value * 0.85
-                ciHi = seg.value * 1.15
+                ciLo = seg.value
+                ciHi = seg.value
             }
 
+            let isISFInCI = (seg.value >= ciLo && seg.value <= ciHi)
             let status: SyncStatus
             if usedEps.isEmpty {
                 status = .insufficientData
-            } else if abs(seg.value - recVal) <= max(5.0, 0.05 * recVal) {
-                status = .inSync
-            } else if seg.value >= ciLo && seg.value <= ciHi {
+            } else if abs(seg.value - recVal) <= max(15.0, 0.10 * recVal) {
+                status = abs(seg.value - recVal) < 2.0 ? .inSync : .inConfidenceInterval
+            } else if isISFInCI {
                 status = .inConfidenceInterval
             } else {
                 status = .adjustRecommended
             }
 
-            let scopeNote = blockEps.count >= 3 ? "block-specific" : "24h pooled"
             let rationale = usedEps.isEmpty
-                ? "No isolated carb-free correction episodes (\(winLabel)); retaining active profile anchor."
-                : "Exact kinetic log-symmetric geometric mean across N=\(usedEps.count) \(scopeNote) correction episodes (\(displayUnit.formatISF(geom, includeUnit: true)); 95% CI \(displayUnit.formatISF(ciLo, includeUnit: false))–\(displayUnit.formatISF(ciHi, includeUnit: true)))."
+                ? "No isolated carb-free correction episodes (\(winLabel)); retaining active profile setting."
+                : "Exact kinetic log-symmetric geometric mean across N=\(usedEps.count) correction episodes (\(displayUnit.formatISF(geomVal, includeUnit: true)); observed range \(displayUnit.formatISF(ciLo, includeUnit: false))–\(displayUnit.formatISF(ciHi, includeUnit: true)))."
 
             isfRecommendations.append(
                 ISFRecommendation(
@@ -376,7 +385,7 @@ public enum TherapyAdvisorSolver {
                     windowLabel: winLabel,
                     currentMgdLPerU: seg.value,
                     recommendedMgdLPerU: recVal,
-                    geometricMeanMgdLPerU: geom,
+                    geometricMeanMgdLPerU: geomVal,
                     ciLowMgdLPerU: ciLo,
                     ciHighMgdLPerU: ciHi,
                     episodeCount: usedEps.count,
@@ -387,209 +396,42 @@ public enum TherapyAdvisorSolver {
         }
 
         let globalISFRec = ISFRecommendation(
-            timeString: "24h Global",
+            timeString: userISFBlocks[0].timeString,
             windowLabel: "00:00 – 24:00",
             currentMgdLPerU: userISFBlocks[0].value,
-            recommendedMgdLPerU: globalRecISF,
-            geometricMeanMgdLPerU: globalGeomMeanISF,
-            ciLowMgdLPerU: globalISFCILow,
-            ciHighMgdLPerU: globalISFCIHigh,
+            recommendedMgdLPerU: recISF,
+            geometricMeanMgdLPerU: geomISF,
+            ciLowMgdLPerU: isfRecommendations.first?.ciLowMgdLPerU ?? recISF,
+            ciHighMgdLPerU: isfRecommendations.first?.ciHighMgdLPerU ?? recISF,
             episodeCount: solvedEpisodeISFs.count,
             status: isfRecommendations.first?.status ?? .inSync,
             rationale: isfRecommendations.first?.rationale ?? ""
         )
 
-        // MARK: - Stage 2: Universal ATTD Asymmetric Closed-Loop Basal Quantile
+        // MARK: - Stage 2: Universal ATTD Asymmetric-Quantile Basal Solver
 
         let tauStar = effectiveConfig.dosingMode.basalQuantileTau
+        let qStep = effectiveConfig.pumpQuantum.rawValue
         var basalRecommendations: [BasalRecommendation] = []
         var solvedBasalByBlock: [Int: Double] = [:]
 
         for (bIdx, seg) in userBasalBlocks.enumerated() {
             let endMin = bIdx + 1 < userBasalBlocks.count ? userBasalBlocks[bIdx + 1].startMinutes : 1440
             let winLabel = "\(seg.timeString) – \(formatMinutes(endMin))"
-            let fluxes = fastingSamples
-                .filter { $0.blockIdx == bIdx }
-                .map { $0.absorbedInsulin + ($0.deltaBG / globalRecISF) }
-                .sorted()
+            let samps = (basalSamplesByBlock[bIdx] ?? []).sorted()
 
-            if fluxes.count >= 5 {
-                let qTau = percentile(fluxes, p: tauStar)
-                let medFlux = percentile(fluxes, p: 0.50)
-                let recRate = effectiveConfig.pumpQuantum.roundBasal(qTau)
-                let (ciLo, ciHi) = quantileBootstrapCI(
-                    fluxes,
-                    quantile: tauStar,
-                    floorValue: effectiveConfig.pumpQuantum.rawValue,
-                    seed: 200 + bIdx
-                )
-                solvedBasalByBlock[bIdx] = recRate
+            if samps.count >= 5 {
+                let qATTD = percentile(samps, p: tauStar)
+                let medEGP = percentile(samps, p: 0.50)
+                let rawRec = max(qStep, ((max(0.0, qATTD) / qStep) + 1e-9).rounded() * qStep)
 
-                let tol = effectiveConfig.pumpQuantum.rawValue * 0.6
-                let status: SyncStatus
-                if abs(seg.value - recRate) <= tol {
-                    status = .inSync
-                } else if seg.value >= (ciLo - tol) && seg.value <= (ciHi + tol) {
-                    status = .inConfidenceInterval
-                } else {
-                    status = .adjustRecommended
-                }
-
-                let autoBolusShare = max(0.0, medFlux - recRate)
-                let rationale = String(
-                    format: "ATTD closed-loop quantile τ* = %.1f%% across N=%d gut-clear fasting hours: raw flux %.3f U/hr → %.2f U/hr (median total EGP demand %.2f U/hr; +%.2f U/hr supplied dynamically on higher-demand days).",
-                    tauStar * 100.0, fluxes.count, max(0.0, qTau), recRate, max(0.0, medFlux), autoBolusShare
-                )
-
-                basalRecommendations.append(
-                    BasalRecommendation(
-                        timeString: seg.timeString,
-                        windowLabel: winLabel,
-                        currentUnitsPerHour: seg.value,
-                        recommendedUnitsPerHour: recRate,
-                        rawQuantileFlux: max(0.0, qTau),
-                        medianTotalFlux: max(0.0, medFlux),
-                        ciLowUnitsPerHour: ciLo,
-                        ciHighUnitsPerHour: ciHi,
-                        fastingHourCount: fluxes.count,
-                        status: status,
-                        rationale: rationale
-                    )
-                )
-            } else {
-                solvedBasalByBlock[bIdx] = seg.value
-                basalRecommendations.append(
-                    BasalRecommendation(
-                        timeString: seg.timeString,
-                        windowLabel: winLabel,
-                        currentUnitsPerHour: seg.value,
-                        recommendedUnitsPerHour: seg.value,
-                        rawQuantileFlux: seg.value,
-                        medianTotalFlux: seg.value,
-                        ciLowUnitsPerHour: max(effectiveConfig.pumpQuantum.rawValue, seg.value * 0.75),
-                        ciHighUnitsPerHour: seg.value * 1.25,
-                        fastingHourCount: fluxes.count,
-                        status: .insufficientData,
-                        rationale: "Limited carb-free fasting hours (N=\(fluxes.count) in \(winLabel)) due to daytime meal overlap; retaining profile anchor."
-                    )
-                )
-            }
-        }
-
-        // MARK: - Stage 3: Kinetic Mass-Balance Gauss-Markov WLS Carb Ratios
-
-        // Cluster multi-part meals within 45 minutes
-        struct MealCluster {
-            var startTS: TimeInterval
-            var totalCarbs: Double
-        }
-        var clusters: [MealCluster] = []
-        for c in sortedCarbs where c.grams >= 3.0 {
-            if let lastIdx = clusters.indices.last, c.timestamp - clusters[lastIdx].startTS <= 2700.0 {
-                clusters[lastIdx].totalCarbs += c.grams
-            } else {
-                clusters.append(MealCluster(startTS: c.timestamp, totalCarbs: c.grams))
-            }
-        }
-
-        let userCRBlocks: [ScheduleSegment] = activeProfile.carbRatioSchedule.isEmpty
-            ? [ScheduleSegment(startMinutes: 0, timeString: "00:00", value: 10.0)]
-            : activeProfile.carbRatioSchedule
-
-        struct MealObservation {
-            let crBlockIdx: Int
-            let totalCarbs: Double
-            let mealInsulin: Double
-            let postMealTargetDelta: Double
-        }
-
-        let mealHorizonSec: TimeInterval = 3.5 * 3600.0
-        let preBolusLeadSec: TimeInterval = 1200.0
-        var mealObservations: [MealObservation] = []
-
-        for (i, cl) in clusters.enumerated() where cl.totalCarbs >= 5.0 {
-            let mt = cl.startTS
-            // Skip if a large independent meal (>12g) arrives mid-window; sum smaller rescue carbs (<12g)
-            var extraCarbs = 0.0
-            var independentOverlap = false
-            var j = i + 1
-            while j < clusters.count && clusters[j].startTS < mt + mealHorizonSec {
-                if clusters[j].totalCarbs > 12.0 {
-                    independentOverlap = true
-                    break
-                } else {
-                    extraCarbs += clusters[j].totalCarbs
-                }
-                j += 1
-            }
-            if independentOverlap { continue }
-
-            guard let bg0 = bgAt(mt, maxGapSeconds: 900.0),
-                  let bgEnd = bgAt(mt + mealHorizonSec, maxGapSeconds: 1200.0) else { continue }
-
-            let totalCarbs = cl.totalCarbs + extraCarbs
-            let iAbsWindow = pkTimeline.absorbedInsulin(from: mt - preBolusLeadSec, to: mt + mealHorizonSec)
-            let basalNeed = integrateBasalMap(solvedBasalByBlock, from: mt - preBolusLeadSec, to: mt + mealHorizonSec)
-            let isfAtMeal = lookupSegment(userISFBlocks, minuteOfDay: localMinuteOfDay(mt), fallback: globalRecISF)
-            let usedISF = isfRecommendations.first(where: {
-                let idx = blockIndex(for: localMinuteOfDay(mt), in: userISFBlocks)
-                return $0.timeString == userISFBlocks[idx].timeString
-            })?.recommendedMgdLPerU ?? isfAtMeal
-
-            let mealIns = (iAbsWindow - basalNeed) + ((bgEnd - bg0) / usedISF)
-            let impliedCR = mealIns > 0.08 ? (totalCarbs / mealIns) : -1.0
-            guard mealIns > 0.08, impliedCR >= 1.2, impliedCR <= 80.0 else { continue }
-
-            let targetMidEnd = activeTargetMid(at: mt + mealHorizonSec)
-            let bIdx = blockIndex(for: localMinuteOfDay(mt), in: userCRBlocks)
-            mealObservations.append(
-                MealObservation(
-                    crBlockIdx: bIdx,
-                    totalCarbs: totalCarbs,
-                    mealInsulin: mealIns,
-                    postMealTargetDelta: bgEnd - targetMidEnd
-                )
-            )
-        }
-
-        var crRecommendations: [CarbRatioRecommendation] = []
-        for (cIdx, seg) in userCRBlocks.enumerated() {
-            let endMin = cIdx + 1 < userCRBlocks.count ? userCRBlocks[cIdx + 1].startMinutes : 1440
-            let winLabel = "\(seg.timeString) – \(formatMinutes(endMin))"
-            let obs = mealObservations.filter { $0.crBlockIdx == cIdx }
-
-            if obs.count >= 4 {
-                let sumC = obs.map(\.totalCarbs).reduce(0.0, +)
-                let sumI = obs.map(\.mealInsulin).reduce(0.0, +)
-                let betaWLS = sumI / sumC // U/g
-                let rawCR = 1.0 / betaWLS
-                let recCR = (rawCR * 10.0).rounded() / 10.0
-
-                let nD = Double(obs.count)
-                let weightedSSE = obs.reduce(0.0) { acc, item in
-                    let r = item.mealInsulin - betaWLS * item.totalCarbs
-                    return acc + (r * r) / item.totalCarbs
-                }
-                let s2 = weightedSSE / max(1.0, nD - 1.0)
-                let seBeta = sqrt(s2 / sumC)
-                let tCrit = studentTCrit95(df: obs.count - 1)
-                let betaLo = max(betaWLS * 0.25, betaWLS - tCrit * seBeta)
-                let betaHi = betaWLS + tCrit * seBeta
-                let ciLo = ((1.0 / betaHi) * 10.0).rounded() / 10.0
-                let ciHi = ((1.0 / betaLo) * 10.0).rounded() / 10.0
-
-                // Centered Pearson R^2
-                let meanC = sumC / nD
-                let meanI = sumI / nD
-                let covCI = obs.reduce(0.0) { $0 + ($1.totalCarbs - meanC) * ($1.mealInsulin - meanI) }
-                let varC = obs.reduce(0.0) { $0 + pow($1.totalCarbs - meanC, 2) }
-                let varI = obs.reduce(0.0) { $0 + pow($1.mealInsulin - meanI, 2) }
-                let rSquared = (varC > 1e-9 && varI > 1e-9) ? pow(covCI / sqrt(varC * varI), 2) : 0.0
-
-                let medTargetDelta = percentile(obs.map(\.postMealTargetDelta).sorted(), p: 0.50)
+                let (boot025, boot975) = rawQuantileBootstrapCI(samps, quantile: tauStar, iterations: 1000, seed: 42 + bIdx)
+                let ciLo = min(rawRec, (max(0.0, boot025) * 1000.0).rounded() / 1000.0)
+                let ciHi = max(rawRec, (max(qStep, boot975) * 1000.0).rounded() / 1000.0)
+                solvedBasalByBlock[bIdx] = rawRec
 
                 let status: SyncStatus
-                if abs(seg.value - recCR) <= max(0.2, 0.03 * recCR) {
+                if abs(seg.value - rawRec) < max(0.03, 0.6 * qStep) {
                     status = .inSync
                 } else if seg.value >= ciLo && seg.value <= ciHi {
                     status = .inConfidenceInterval
@@ -597,29 +439,242 @@ public enum TherapyAdvisorSolver {
                     status = .adjustRecommended
                 }
 
-                let deltaDisplay = displayUnit.formatBG(abs(medTargetDelta), includeUnit: true)
-                let signStr = medTargetDelta >= 0 ? "+" : "−"
+                let autoSupp = max(0.0, medEGP - rawRec)
                 let rationale = String(
-                    format: "Gauss-Markov WLS (w = 1/C) across N=%d Kinetic mass-balance 3.5h meals: 1:%.1f g/U (Centered R² = %.2f, Med 3.5h BG − Target = %@%@).",
-                    obs.count, recCR, rSquared, signStr, deltaDisplay
+                    format: "ATTD closed-loop quantile τ* = %.1f%% across N=%d fasting hours (τ* baseline: %.3f U/hr → %.2f U/hr; median total EGP flux: %.3f U/hr, with ~%.2f U/hr supplied dynamically on higher-demand days).",
+                    tauStar * 100.0, samps.count, max(0.0, qATTD), rawRec, max(0.0, medEGP), autoSupp
                 )
 
-                crRecommendations.append(
-                    CarbRatioRecommendation(
+                basalRecommendations.append(
+                    BasalRecommendation(
                         timeString: seg.timeString,
                         windowLabel: winLabel,
-                        currentGramsPerUnit: seg.value,
-                        recommendedGramsPerUnit: recCR,
-                        rawWLSGramsPerUnit: rawCR,
-                        ciLowGramsPerUnit: ciLo,
-                        ciHighGramsPerUnit: ciHi,
-                        centeredRSquared: rSquared,
-                        medianPostMealTargetDeltaMgdL: medTargetDelta,
-                        mealCount: obs.count,
+                        currentUnitsPerHour: seg.value,
+                        recommendedUnitsPerHour: rawRec,
+                        rawQuantileFlux: max(0.0, qATTD),
+                        medianTotalFlux: max(0.0, medEGP),
+                        ciLowUnitsPerHour: ciLo,
+                        ciHighUnitsPerHour: ciHi,
+                        fastingHourCount: samps.count,
                         status: status,
                         rationale: rationale
                     )
                 )
+            } else {
+                let rec = max(qStep, seg.value)
+                solvedBasalByBlock[bIdx] = rec
+                basalRecommendations.append(
+                    BasalRecommendation(
+                        timeString: seg.timeString,
+                        windowLabel: winLabel,
+                        currentUnitsPerHour: seg.value,
+                        recommendedUnitsPerHour: rec,
+                        rawQuantileFlux: rec,
+                        medianTotalFlux: rec,
+                        ciLowUnitsPerHour: rec,
+                        ciHighUnitsPerHour: rec,
+                        fastingHourCount: samps.count,
+                        status: .insufficientData,
+                        rationale: "Insufficient carb-free fasting windows (N=\(samps.count) hrs in \(winLabel)); anchored to active profile (\(String(format: "%.2f", rec)) U/hr)."
+                    )
+                )
+            }
+        }
+
+        // MARK: - Stage 3: Kinetic Mass-Balance & Gauss-Markov WLS Carb Ratio Solver
+
+        struct MealCluster {
+            let startTS: TimeInterval
+            let carbs: Double
+            let maxAbsSec: TimeInterval
+        }
+
+        var clusteredMeals: [MealCluster] = []
+        var curMT: TimeInterval?
+        var curMC: Double = 0.0
+        var curMAbs: TimeInterval = 10800.0
+
+        for c in sortedCarbs {
+            let bgAtC = bgAt(c.timestamp, maxGapSeconds: 600.0)
+            if curMT == nil || (c.timestamp - curMT!) >= 2700.0 {
+                if let validMT = curMT, curMC >= 8.0 {
+                    clusteredMeals.append(MealCluster(startTS: validMT, carbs: curMC, maxAbsSec: curMAbs))
+                }
+                // Standalone fast-acting hypo rescue (<85 mg/dL, <=40m, <=12g) does not initiate a meal cluster
+                if c.absorptionSeconds <= 2400.0 && (bgAtC != nil && bgAtC! < 85.0) && c.grams <= 12.0 {
+                    curMT = nil
+                    curMC = 0.0
+                    curMAbs = 10800.0
+                } else {
+                    curMT = c.timestamp
+                    curMC = c.grams
+                    curMAbs = c.absorptionSeconds
+                }
+            } else {
+                curMC += c.grams
+                curMAbs = max(curMAbs, c.absorptionSeconds)
+            }
+        }
+        if let validMT = curMT, curMC >= 8.0 {
+            clusteredMeals.append(MealCluster(startTS: validMT, carbs: curMC, maxAbsSec: curMAbs))
+        }
+
+        let userCRBlocks: [ScheduleSegment] = activeProfile.carbRatioSchedule.isEmpty
+            ? [ScheduleSegment(startMinutes: 0, timeString: "00:00", value: 10.0)]
+            : activeProfile.carbRatioSchedule
+
+        let mealHorizonSec: TimeInterval = 12600.0 // 3.5h horizon
+        var slotPts: [Int: [(carbs: Double, iFood: Double)]] = [:]
+        var slotDeltas: [Int: [Double]] = [:]
+
+        for cl in clusteredMeals {
+            let mt = cl.startTS
+            guard let bg0 = bgAt(mt, maxGapSeconds: 900.0),
+                  let bgEnd = bgAt(mt + mealHorizonSec, maxGapSeconds: 900.0),
+                  bg0 >= 75.0 else { continue }
+
+            // Exclude overlapping second meals in (0, 3.5h), while retaining low-BG rescue treatments (<90 mg/dL, <=16g)
+            let subMeals = clusteredMeals.filter { $0.startTS > mt && ($0.startTS - mt) < mealHorizonSec }
+            if !subMeals.isEmpty {
+                let allRescues = subMeals.allSatisfy { sm in
+                    let b = bgAt(sm.startTS, maxGapSeconds: 600.0) ?? 999.0
+                    return b < 90.0 && sm.carbs <= 16.0
+                }
+                if !allRescues { continue }
+            }
+            if inExerciseWindow(from: mt - 900.0, to: mt + mealHorizonSec) { continue }
+
+            let cIdx = blockIndex(for: localMinuteOfDay(mt), in: userCRBlocks)
+            let totCarbs = sortedCarbs
+                .filter { $0.timestamp >= mt - 300.0 && $0.timestamp < mt + mealHorizonSec }
+                .reduce(0.0) { $0 + $1.grams }
+            let hasLoggedFollowup = totCarbs > cl.carbs
+            let postBGs = cgm
+                .filter { $0.timestamp >= mt + 1800.0 && $0.timestamp <= mt + mealHorizonSec }
+                .map(\.sgvMgdL)
+            let nadirBG = postBGs.min() ?? bgEnd
+            let effBGEnd = (nadirBG < 70.0 && !hasLoggedFollowup) ? min(bgEnd, nadirBG) : bgEnd
+
+            let tW0 = mt - 1200.0
+            let tW1 = mt + mealHorizonSec
+            let iAbsMeal = pkTimeline.absorbedInsulin(from: tW0, to: tW1)
+            let bSchedMeal = integrateBasalMap(solvedBasalByBlock, fallback: 0.10, from: tW0, to: tW1)
+            let iFood = iAbsMeal - bSchedMeal + ((effBGEnd - bg0) / recISF)
+
+            let maxPlausibleCR = max(25.0, userCRBlocks[cIdx].value * 2.8)
+            if iFood > 0.2 && totCarbs >= 6.0 && (totCarbs / iFood) <= maxPlausibleCR {
+                slotPts[cIdx, default: []].append((totCarbs, iFood))
+                let activeTMid = activeTargetMid(at: mt + mealHorizonSec)
+                slotDeltas[cIdx, default: []].append(bgEnd - activeTMid)
+            }
+        }
+
+        var crRecommendations: [CarbRatioRecommendation] = []
+        for (cIdx, seg) in userCRBlocks.enumerated() {
+            let endMin = cIdx + 1 < userCRBlocks.count ? userCRBlocks[cIdx + 1].startMinutes : 1440
+            let winLabel = "\(seg.timeString) – \(formatMinutes(endMin))"
+            let pts = slotPts[cIdx] ?? []
+            let deltas = slotDeltas[cIdx] ?? []
+            let n = pts.count
+            let isNocturnalSlot = (seg.startMinutes == 0 && endMin <= 540) || seg.startMinutes >= 1260
+
+            if n >= 2 {
+                let sumC = pts.reduce(0.0) { $0 + $1.carbs }
+                let sumI = pts.reduce(0.0) { $0 + $1.iFood }
+                let betaWLS = sumC > 0 ? (sumI / sumC) : (1.0 / seg.value)
+                let wlsCR = betaWLS > 0 ? (1.0 / betaWLS) : seg.value
+
+                let df = max(1, n - 1)
+                let s2WLS = pts.reduce(0.0) { acc, item in
+                    let r = item.iFood - betaWLS * item.carbs
+                    return acc + (r * r) / item.carbs
+                } / Double(df)
+                let seBeta = sumC > 0 ? sqrt(s2WLS / sumC) : 0.0
+                let tCrit = studentTCrit95(df: df)
+                let betaLow = max(1e-4, betaWLS - tCrit * seBeta)
+                let betaHigh = betaWLS + tCrit * seBeta
+
+                let crCILo = ((1.0 / betaHigh) * 10.0).rounded() / 10.0
+                let crCIHi = ((1.0 / betaLow) * 10.0).rounded() / 10.0
+
+                let meanC = sumC / Double(n)
+                let meanI = sumI / Double(n)
+                let covCI = pts.reduce(0.0) { $0 + ($1.carbs - meanC) * ($1.iFood - meanI) }
+                let varC = pts.reduce(0.0) { $0 + pow($1.carbs - meanC, 2) }
+                let varI = pts.reduce(0.0) { $0 + pow($1.iFood - meanI, 2) }
+                let rSquared = (varC > 0 && varI > 0) ? ((covCI * covCI) / (varC * varI)) : 0.0
+                let medDelta = deltas.isEmpty ? 0.0 : percentile(deltas.sorted(), p: 0.50)
+
+                let isUnderpowered = (n < 4) || (seBeta > 0 && (betaWLS / seBeta) < tCrit)
+                if isUnderpowered && !isNocturnalSlot {
+                    crRecommendations.append(
+                        CarbRatioRecommendation(
+                            timeString: seg.timeString,
+                            windowLabel: winLabel,
+                            currentGramsPerUnit: seg.value,
+                            recommendedGramsPerUnit: seg.value,
+                            rawWLSGramsPerUnit: wlsCR,
+                            ciLowGramsPerUnit: crCILo,
+                            ciHighGramsPerUnit: crCIHi,
+                            centeredRSquared: rSquared,
+                            medianPostMealTargetDeltaMgdL: medDelta,
+                            mealCount: n,
+                            status: .insufficientData,
+                            rationale: String(format: "Underpowered sample (N=%d, WLS 1:%.1f g/U). Maintaining active profile setting (1:%.1f g/U).", n, wlsCR, seg.value)
+                        )
+                    )
+                } else if n < 5 && isNocturnalSlot {
+                    crRecommendations.append(
+                        CarbRatioRecommendation(
+                            timeString: seg.timeString,
+                            windowLabel: winLabel,
+                            currentGramsPerUnit: seg.value,
+                            recommendedGramsPerUnit: seg.value,
+                            rawWLSGramsPerUnit: wlsCR,
+                            ciLowGramsPerUnit: crCILo,
+                            ciHighGramsPerUnit: crCIHi,
+                            centeredRSquared: rSquared,
+                            medianPostMealTargetDeltaMgdL: medDelta,
+                            mealCount: n,
+                            status: .inSync,
+                            rationale: String(format: "Sparse nocturnal meals (N=%d, WLS 1:%.1f g/U). Anchored to active profile setting (1:%.1f g/U).", n, wlsCR, seg.value)
+                        )
+                    )
+                } else {
+                    let recCR = (wlsCR * 10.0).rounded() / 10.0
+                    let status: SyncStatus
+                    if abs(seg.value - recCR) < 0.2 {
+                        status = .inSync
+                    } else if seg.value >= crCILo && seg.value <= crCIHi {
+                        status = .inConfidenceInterval
+                    } else {
+                        status = .adjustRecommended
+                    }
+
+                    let deltaDisplay = displayUnit.formatBG(abs(medDelta), includeUnit: true)
+                    let signStr = medDelta >= 0 ? "+" : "−"
+                    let rationale = String(
+                        format: "Gauss-Markov WLS (w = 1/C): 1:%.1f g/U (N = %d, Centered R² = %.2f, Med 3.5h BG − Target = %@%@). 95%% CI: 1:%.1f – 1:%.1f g/U.",
+                        wlsCR, n, rSquared, signStr, deltaDisplay, crCILo, crCIHi
+                    )
+
+                    crRecommendations.append(
+                        CarbRatioRecommendation(
+                            timeString: seg.timeString,
+                            windowLabel: winLabel,
+                            currentGramsPerUnit: seg.value,
+                            recommendedGramsPerUnit: recCR,
+                            rawWLSGramsPerUnit: wlsCR,
+                            ciLowGramsPerUnit: crCILo,
+                            ciHighGramsPerUnit: crCIHi,
+                            centeredRSquared: rSquared,
+                            medianPostMealTargetDeltaMgdL: medDelta,
+                            mealCount: n,
+                            status: status,
+                            rationale: rationale
+                        )
+                    )
+                }
             } else {
                 crRecommendations.append(
                     CarbRatioRecommendation(
@@ -628,19 +683,19 @@ public enum TherapyAdvisorSolver {
                         currentGramsPerUnit: seg.value,
                         recommendedGramsPerUnit: seg.value,
                         rawWLSGramsPerUnit: seg.value,
-                        ciLowGramsPerUnit: seg.value * 0.85,
-                        ciHighGramsPerUnit: seg.value * 1.15,
+                        ciLowGramsPerUnit: seg.value,
+                        ciHighGramsPerUnit: seg.value,
                         centeredRSquared: 0.0,
                         medianPostMealTargetDeltaMgdL: 0.0,
-                        mealCount: obs.count,
+                        mealCount: n,
                         status: .insufficientData,
-                        rationale: "Fasting/low-meal window (N=\(obs.count) isolated meals in \(winLabel)); retaining active profile setting."
+                        rationale: "Fasting period with minimal isolated meals (N=\(n)); anchored to active profile (1:\(String(format: "%.1f", seg.value)) g/U)."
                     )
                 )
             }
         }
 
-        // MARK: - Stage 4: Closed-Loop Correction Range (Setpoint & Deadband Physics)
+        // MARK: - Stage 4: Optimal Correction Target Range Solver
 
         var adjDiffs: [Double] = []
         for i in 1..<cgm.count {
@@ -651,13 +706,12 @@ public enum TherapyAdvisorSolver {
         }
         adjDiffs.sort()
         let sigmaCGM = adjDiffs.isEmpty ? 5.5 : (percentile(adjDiffs, p: 0.50) / 0.6745) / sqrt(2.0)
-        let podStepImpact = effectiveConfig.pumpQuantum.rawValue * globalRecISF
+        let podStepImpact = qStep * recISF
         let rawDeadband = 2.0 * max(sigmaCGM, podStepImpact)
         let targetDeadbandWidthMgdL: Double = displayUnit == .mmolL
             ? ceil((rawDeadband / BGUnit.mmolConversionFactor) / 0.2) * 0.2 * BGUnit.mmolConversionFactor
             : max(10.0, ceil(rawDeadband / 5.0) * 5.0)
 
-        // Use user's target blocks if >= 2; if user has a single 24h flat block, evaluate Overnight (22:00-08:30) + Daytime (08:30-22:00)
         struct TargetEvalWindow {
             let timeString: String
             let label: String
@@ -682,7 +736,7 @@ public enum TherapyAdvisorSolver {
                 }
             } else {
                 let single = activeProfile.targetSchedule.first
-                    ?? TargetScheduleSegment(startMinutes: 0, timeString: "00:00", lowMgdL: 100.0, highMgdL: 115.0)
+                    ?? TargetScheduleSegment(startMinutes: 0, timeString: "00:00", lowMgdL: 110.0, highMgdL: 125.0)
                 return [
                     TargetEvalWindow(
                         timeString: "22:00",
@@ -732,26 +786,29 @@ public enum TherapyAdvisorSolver {
                 guard dayBlocks.count >= 5 else { return (optMid - 5.0, optMid + 5.0) }
                 var rng = SplitMix64(seed: UInt64(900 + wIdx))
                 var bootMids: [Double] = []
-                bootMids.reserveCapacity(200)
+                bootMids.reserveCapacity(250)
                 let blocksArray = Array(dayBlocks)
-                for _ in 0..<200 {
+                for _ in 0..<250 {
                     var flat: [Double] = []
                     for _ in 0..<blocksArray.count {
                         let pick = Int(rng.next() % UInt64(blocksArray.count))
                         flat.append(contentsOf: blocksArray[pick])
                     }
                     flat.sort()
-                    let (bm, _, _) = solveOptimalTargetMidpoint(sortedErrors: flat, strideStep: 5)
+                    let (bm, _, _) = solveOptimalTargetMidpoint(sortedErrors: flat, strideStep: 4)
                     bootMids.append(bm)
                 }
                 bootMids.sort()
-                return (percentile(bootMids, p: 0.025), percentile(bootMids, p: 0.975))
+                return (
+                    (bootMids[Int(0.025 * Double(bootMids.count))] * 10.0).rounded() / 10.0,
+                    (bootMids[Int(0.975 * Double(bootMids.count))] * 10.0).rounded() / 10.0
+                )
             }()
 
             let predTIR = errsAll.isEmpty ? 0.0 : (100.0 * Double(errsAll.filter { optMid + $0 >= 70.0 && optMid + $0 <= 180.0 }.count) / Double(errsAll.count))
             let curMid = 0.5 * (win.curLow + win.curHigh)
             let status: SyncStatus
-            if abs(curMid - optMid) <= 3.0 {
+            if (Int(win.curLow.rounded()) == Int(recLow.rounded()) && Int(win.curHigh.rounded()) == Int(recHigh.rounded())) || abs(curMid - optMid) <= 3.0 {
                 status = .inSync
             } else if curMid >= (ciMidLo - 2.5) && curMid <= (ciMidHi + 2.5) {
                 status = .inConfidenceInterval
@@ -759,7 +816,7 @@ public enum TherapyAdvisorSolver {
                 status = .adjustRecommended
             }
 
-            let rationale = "ATTD safety floor \(displayUnit.formatBG(floorMid, includeUnit: true)) • Kovatchev BGRI minimum \(displayUnit.formatBG(optMid, includeUnit: true)) (BGRI \(String(format: "%.2f", bgriMin)), Pred TIR \(String(format: "%.1f%%", predTIR))) across \(dayBlocks.count) days. Deadband width \(displayUnit.formatBG(targetDeadbandWidthMgdL, includeUnit: true)) from 5m CGM jitter (\(displayUnit.formatBG(sigmaCGM, includeUnit: true))) & \(String(format: "%.2g", effectiveConfig.pumpQuantum.rawValue))U step."
+            let rationale = "ATTD safety floor \(displayUnit.formatBG(floorMid, includeUnit: true)) • Kovatchev BGRI minimum \(displayUnit.formatBG(optMid, includeUnit: true)) (BGRI \(String(format: "%.2f", bgriMin)), Pred TIR \(String(format: "%.1f%%", predTIR))) across \(dayBlocks.count) days. Deadband width \(displayUnit.formatBG(targetDeadbandWidthMgdL, includeUnit: true))."
 
             targetRecommendations.append(
                 TargetRangeRecommendation(
@@ -782,11 +839,11 @@ public enum TherapyAdvisorSolver {
             )
         }
 
-        // MARK: - Closed-Loop Control Stability Audit & Glycemic Stats
+        // MARK: - Control Stability & Glycemic Stats
 
         let stability = computeStabilityAudit(
             activeISF: userISFBlocks[0].value,
-            empiricalISF: globalGeomMeanISF,
+            empiricalISF: geomISF,
             peakMinutes: effectiveConfig.peakMinutes,
             diaMinutes: effectiveConfig.diaMinutes,
             sensorJitterMgdL: sigmaCGM,
@@ -856,7 +913,7 @@ public enum TherapyAdvisorSolver {
 
         for k in 0..<50 {
             let cand = tFloor + Double(k) * 0.5
-            if cand > 150.0 { break }
+            if cand > 145.0 { break }
             var acc = 0.0
             for idx in stride(from: 0, to: n, by: step) {
                 acc += kovatchevBGRisk(cand + sortedErrors[idx])
@@ -882,7 +939,6 @@ public enum TherapyAdvisorSolver {
         let horizonHours = max(3.0, diaMinutes / 60.0)
         let kPlant = max(10.0, empiricalISF)
         let kController = 1.0 / max(10.0, activeISF)
-        // Effective closed-loop gain normalized by 6h prediction horizon damping
         let loopGain = (kPlant * kController) * (tauHours / (horizonHours * 0.52))
         let naturalWn = sqrt(max(0.05, loopGain)) / tauHours
         let dampingZeta = 1.0 / (2.0 * sqrt(max(0.05, loopGain)))
@@ -954,7 +1010,6 @@ public enum TherapyAdvisorSolver {
         samples: [CGMSample],
         localMinuteOfDay: (TimeInterval) -> Int
     ) -> [AGPBin] {
-        // 48 half-hour bins across 24 hours
         var buckets = Array(repeating: [Double](), count: 48)
         for s in samples {
             let b = min(47, max(0, localMinuteOfDay(s.timestamp) / 30))
@@ -1003,17 +1058,17 @@ public enum TherapyAdvisorSolver {
         return (percentile(bootMeans, p: 0.025), percentile(bootMeans, p: 0.975))
     }
 
-    private static func quantileBootstrapCI(
+    private static func rawQuantileBootstrapCI(
         _ sortedValues: [Double],
         quantile: Double,
-        floorValue: Double,
+        iterations: Int,
         seed: Int
     ) -> (Double, Double) {
         var rng = SplitMix64(seed: UInt64(abs(seed) + 1))
         var boots: [Double] = []
-        boots.reserveCapacity(300)
+        boots.reserveCapacity(iterations)
         let n = sortedValues.count
-        for _ in 0..<300 {
+        for _ in 0..<iterations {
             var sample = [Double]()
             sample.reserveCapacity(n)
             for _ in 0..<n {
@@ -1021,10 +1076,12 @@ public enum TherapyAdvisorSolver {
                 sample.append(sortedValues[pick])
             }
             sample.sort()
-            boots.append(max(floorValue, percentile(sample, p: quantile)))
+            boots.append(percentile(sample, p: quantile))
         }
         boots.sort()
-        return (percentile(boots, p: 0.025), percentile(boots, p: 0.975))
+        let idxLo = max(0, min(iterations - 1, Int(0.025 * Double(iterations))))
+        let idxHi = max(0, min(iterations - 1, Int(0.975 * Double(iterations))))
+        return (boots[idxLo], boots[idxHi])
     }
 
     private static func studentTCrit95(df: Int) -> Double {
@@ -1046,7 +1103,6 @@ public enum TherapyAdvisorSolver {
     }
 }
 
-/// Deterministic fast PRNG so bootstrap 95% CIs are reproducible across runs.
 public struct SplitMix64: Sendable {
     private var state: UInt64
     public init(seed: UInt64) { self.state = seed == 0 ? 0x9E3779B97F4A7C15 : seed }

@@ -39,13 +39,13 @@ public struct NightscoutClient: Sendable {
 
         let now = Date()
         let cutoffDate = now.addingTimeInterval(-Double(max(7, rollingDays)) * 86400.0)
-        // Pad treatments & CGM slightly earlier by 6h DIA so initial IOB is exact
-        let paddedCutoff = cutoffDate.addingTimeInterval(-6.0 * 3600.0)
-        let cutoffMillis = Int64(paddedCutoff.timeIntervalSince1970 * 1000.0)
+        let treatmentsCutoffDate = cutoffDate.addingTimeInterval(-6.0 * 3600.0) // 6h DIA pre-warmup so boundary IOB is exact
+        let cutoffMillis = Int64(cutoffDate.timeIntervalSince1970 * 1000.0)
 
         let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime]
-        let cutoffISO = isoFormatter.string(from: paddedCutoff)
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        isoFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        let cutoffISO = isoFormatter.string(from: treatmentsCutoffDate)
 
         async let profilesData = performGET(
             baseURL: baseURL,
@@ -58,7 +58,7 @@ public struct NightscoutClient: Sendable {
             path: "/api/v1/entries/sgv.json",
             queryItems: [
                 URLQueryItem(name: "find[date][$gte]", value: "\(cutoffMillis)"),
-                URLQueryItem(name: "count", value: "20000")
+                URLQueryItem(name: "count", value: "15000")
             ],
             credentials: credentials
         )
@@ -80,21 +80,23 @@ public struct NightscoutClient: Sendable {
 
         let (pBytes, cBytes, tBytes, dsBytes) = try await (profilesData, cgmData, treatmentsData, deviceStatusData)
 
-        let profiles = try Self.parseProfiles(from: pBytes)
-        let activeUnits = profiles.last?.units ?? .mgdL
-        let cgmSamples = try Self.parseCGM(from: cBytes).filter { $0.timestamp >= cutoffDate.timeIntervalSince1970 }
-        let (boluses, carbs, tempBasals, overrides) = try Self.parseTreatments(from: tBytes, fallbackUnit: activeUnits)
+        let (sortedProfiles, activeProfile) = try Self.parseProfilesWithActive(from: pBytes)
+        let activeUnits = activeProfile?.units ?? .mgdL
+        let cgmSamples = try Self.parseCGM(from: cBytes)
+        let (boluses, carbs, tempBasals, overrides, exercises) = try Self.parseTreatmentsFull(from: tBytes, fallbackUnit: activeUnits)
         let detectedMode = dsBytes.flatMap { Self.detectDosingMode(from: $0) }
 
         return NightscoutTelemetryBundle(
             fetchedAt: now,
             sourceURL: baseURL.absoluteString,
-            profiles: profiles,
+            profiles: sortedProfiles,
+            activeProfile: activeProfile,
             cgmSamples: cgmSamples,
             boluses: boluses,
             carbs: carbs,
             tempBasals: tempBasals,
             targetOverrides: overrides,
+            exerciseWindows: exercises,
             detectedDosingMode: detectedMode
         )
     }
@@ -117,7 +119,7 @@ public struct NightscoutClient: Sendable {
         guard let url = comps.url else { throw ClientError.invalidURL }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 30
+        request.timeoutInterval = 35
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let secret = credentials.apiSecretPlaintext.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -139,29 +141,38 @@ public struct NightscoutClient: Sendable {
         return data
     }
 
-    // MARK: - Flexible Nightscout JSON Parsers
+    // MARK: - Nightscout JSON Parsers
 
     public static func parseProfiles(from data: Data) throws -> [HistoricalProfileVersion] {
+        try parseProfilesWithActive(from: data).0
+    }
+
+    public static func parseProfilesWithActive(from data: Data) throws -> ([HistoricalProfileVersion], HistoricalProfileVersion?) {
         guard let rawArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw ClientError.malformedPayload("profile.json is not an array")
         }
 
         var versions: [HistoricalProfileVersion] = []
-        for doc in rawArray {
+        var firstParsed: HistoricalProfileVersion?
+
+        for (idx, doc) in rawArray.enumerated() {
             guard let store = doc["store"] as? [String: Any], !store.isEmpty else { continue }
             let defaultName = (doc["defaultProfile"] as? String) ?? store.keys.sorted().first ?? "Default"
             let activeDict = (store[defaultName] as? [String: Any]) ?? (store.values.first as? [String: Any]) ?? [:]
 
             let unitsStr = (activeDict["units"] as? String) ?? (doc["units"] as? String)
             let unit = BGUnit.fromNightscout(unitsStr)
-            let tzID = (activeDict["timezone"] as? String) ?? TimeZone.current.identifier
+            let rawTZ = (activeDict["timezone"] as? String) ?? TimeZone.current.identifier
+            let tzID = rawTZ.hasPrefix("ETC/") ? "Etc/" + rawTZ.dropFirst(4) : rawTZ
 
             let effTS: TimeInterval = {
+                if let cAt = doc["created_at"] as? String, let ts = parseISOTimestamp(cAt) {
+                    return ts
+                }
                 if let mills = doubleFromAny(doc["mills"]), mills > 1e11 {
                     return mills / 1000.0
                 }
-                if let sDate = doc["startDate"] as? String ?? doc["created_at"] as? String,
-                   let ts = parseISOTimestamp(sDate) {
+                if let sDate = doc["startDate"] as? String, let ts = parseISOTimestamp(sDate) {
                     return ts
                 }
                 return 0.0
@@ -176,20 +187,24 @@ public struct NightscoutClient: Sendable {
                 unit: unit
             )
 
-            versions.append(
-                HistoricalProfileVersion(
-                    effectiveTimestamp: effTS,
-                    profileName: defaultName,
-                    timeZoneIdentifier: tzID,
-                    units: unit,
-                    basalSchedule: basal,
-                    isfSchedule: isf,
-                    carbRatioSchedule: cr,
-                    targetSchedule: targets
-                )
+            let parsed = HistoricalProfileVersion(
+                effectiveTimestamp: effTS,
+                profileName: defaultName,
+                timeZoneIdentifier: tzID,
+                units: unit,
+                basalSchedule: basal,
+                isfSchedule: isf,
+                carbRatioSchedule: cr,
+                targetSchedule: targets
             )
+            if idx == 0 || firstParsed == nil {
+                firstParsed = parsed
+            }
+            versions.append(parsed)
         }
-        return versions.sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
+
+        let sorted = versions.sorted { $0.effectiveTimestamp < $1.effectiveTimestamp }
+        return (sorted, firstParsed ?? sorted.last)
     }
 
     public static func parseCGM(from data: Data) throws -> [CGMSample] {
@@ -199,7 +214,7 @@ public struct NightscoutClient: Sendable {
         var samples: [CGMSample] = []
         samples.reserveCapacity(rawArray.count)
         for item in rawArray {
-            guard let sgv = doubleFromAny(item["sgv"]), sgv >= 25.0, sgv <= 600.0 else { continue }
+            guard let sgv = doubleFromAny(item["sgv"]), sgv >= 30.0, sgv <= 500.0 else { continue }
             let ts: TimeInterval? = {
                 if let dateMillis = doubleFromAny(item["date"]), dateMillis > 1e11 {
                     return dateMillis / 1000.0
@@ -220,6 +235,14 @@ public struct NightscoutClient: Sendable {
         from data: Data,
         fallbackUnit: BGUnit
     ) throws -> ([BolusEvent], [CarbEvent], [TempBasalEvent], [TargetOverrideEvent]) {
+        let (b, c, tb, ov, _) = try parseTreatmentsFull(from: data, fallbackUnit: fallbackUnit)
+        return (b, c, tb, ov)
+    }
+
+    public static func parseTreatmentsFull(
+        from data: Data,
+        fallbackUnit: BGUnit
+    ) throws -> ([BolusEvent], [CarbEvent], [TempBasalEvent], [TargetOverrideEvent], [ExerciseWindowEvent]) {
         guard let rawArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw ClientError.malformedPayload("treatments.json is not an array")
         }
@@ -227,12 +250,18 @@ public struct NightscoutClient: Sendable {
         var boluses: [BolusEvent] = []
         var carbs: [CarbEvent] = []
         var tempBasals: [TempBasalEvent] = []
-        var overrides: [TargetOverrideEvent] = []
+        var rawOverrides: [TargetOverrideEvent] = []
+        var exercises: [ExerciseWindowEvent] = []
+
+        let exerciseWords = ["run", "walk", "play", "exercise", "activity"]
 
         for tr in rawArray {
             let ts: TimeInterval? = {
-                if let tsStr = tr["timestamp"] as? String ?? tr["created_at"] as? String,
-                   let parsed = parseISOTimestamp(tsStr) {
+                // Prioritize created_at (canonical UTC ISO8601 in Nightscout) before timestamp
+                if let createdStr = tr["created_at"] as? String, let parsed = parseISOTimestamp(createdStr) {
+                    return parsed
+                }
+                if let tsStr = tr["timestamp"] as? String, let parsed = parseISOTimestamp(tsStr) {
                     return parsed
                 }
                 if let mills = doubleFromAny(tr["mills"]), mills > 1e11 {
@@ -251,25 +280,42 @@ public struct NightscoutClient: Sendable {
 
             if let cGrams = doubleFromAny(tr["carbs"]), cGrams > 0.0 {
                 let absMin = doubleFromAny(tr["absorptionTime"]) ?? 180.0
-                // Nightscout Loop uploads absorptionTime in minutes (typically 30..480)
                 let absSec = absMin > 1000.0 ? absMin : absMin * 60.0
                 carbs.append(CarbEvent(timestamp: validTS, grams: cGrams, absorptionSeconds: absSec))
             }
 
             if eventType == "Temp Basal" {
-                let durMin = doubleFromAny(tr["duration"]) ?? 0.0
-                if durMin > 0.0, let rate = doubleFromAny(tr["rate"]) ?? doubleFromAny(tr["absolute"]) {
-                    tempBasals.append(
-                        TempBasalEvent(
-                            startTimestamp: validTS,
-                            endTimestamp: validTS + durMin * 60.0,
-                            rateUnitsPerHour: max(0.0, rate)
+                let rateVal = doubleFromAny(tr["rate"]) ?? doubleFromAny(tr["absolute"])
+                if let rate = rateVal {
+                    let durMin: Double = {
+                        if tr["duration"] == nil { return 30.0 }
+                        return doubleFromAny(tr["duration"]) ?? 30.0
+                    }()
+                    if durMin > 0.0 {
+                        tempBasals.append(
+                            TempBasalEvent(
+                                startTimestamp: validTS,
+                                endTimestamp: validTS + durMin * 60.0,
+                                rateUnitsPerHour: max(0.0, rate)
+                            )
                         )
-                    )
+                    }
                 }
             } else if eventType == "Temporary Override" || eventType == "Temporary Target" {
                 let durMin = doubleFromAny(tr["duration"]) ?? 0.0
-                if durMin > 0.0 {
+                if durMin > 0.5 {
+                    let scale = doubleFromAny(tr["insulinNeedsScaleFactor"]) ?? 1.0
+                    let reason = (tr["reason"] as? String) ?? ""
+                    let lowerReason = reason.lowercased()
+                    if scale < 0.95 || exerciseWords.contains(where: { lowerReason.contains($0) }) {
+                        exercises.append(
+                            ExerciseWindowEvent(
+                                startTimestamp: validTS,
+                                endTimestamp: validTS + durMin * 60.0
+                            )
+                        )
+                    }
+
                     var loVal: Double?
                     var hiVal: Double?
                     if let crArr = tr["correctionRange"] as? [Any], crArr.count == 2 {
@@ -279,16 +325,14 @@ public struct NightscoutClient: Sendable {
                         loVal = doubleFromAny(tr["targetBottom"])
                         hiVal = doubleFromAny(tr["targetTop"])
                     }
-                    if var lo = loVal, var hi = hiVal {
-                        // Detect mmol/L override ranges (< 30) automatically
+                    if var lo = loVal, var hi = hiVal, lo > 0, hi > 0 {
                         let trUnits = BGUnit.fromNightscout(tr["units"] as? String)
                         if trUnits == .mmolL || (fallbackUnit == .mmolL && hi < 35.0) || hi < 30.0 {
                             lo *= BGUnit.mmolConversionFactor
                             hi *= BGUnit.mmolConversionFactor
                         }
                         if lo >= 55.0 && hi <= 260.0 && lo <= hi {
-                            let reason = (tr["reason"] as? String) ?? ""
-                            overrides.append(
+                            rawOverrides.append(
                                 TargetOverrideEvent(
                                     startTimestamp: validTS,
                                     endTimestamp: validTS + durMin * 60.0,
@@ -303,11 +347,34 @@ public struct NightscoutClient: Sendable {
             }
         }
 
+        // Truncate superseded overlapping Target Overrides identically to Python reference
+        rawOverrides.sort { $0.startTimestamp < $1.startTimestamp }
+        var truncatedOverrides: [TargetOverrideEvent] = []
+        for i in 0..<rawOverrides.count {
+            let s = rawOverrides[i].startTimestamp
+            var e = rawOverrides[i].endTimestamp
+            if i + 1 < rawOverrides.count && rawOverrides[i + 1].startTimestamp < e {
+                e = rawOverrides[i + 1].startTimestamp
+            }
+            if e > s {
+                truncatedOverrides.append(
+                    TargetOverrideEvent(
+                        startTimestamp: s,
+                        endTimestamp: e,
+                        lowMgdL: rawOverrides[i].lowMgdL,
+                        highMgdL: rawOverrides[i].highMgdL,
+                        reason: rawOverrides[i].reason
+                    )
+                )
+            }
+        }
+
         return (
             boluses.sorted { $0.timestamp < $1.timestamp },
             carbs.sorted { $0.timestamp < $1.timestamp },
             tempBasals.sorted { $0.startTimestamp < $1.startTimestamp },
-            overrides.sorted { $0.startTimestamp < $1.startTimestamp }
+            truncatedOverrides,
+            exercises.sorted { $0.startTimestamp < $1.startTimestamp }
         )
     }
 
@@ -324,7 +391,7 @@ public struct NightscoutClient: Sendable {
                 }
             }
             if doc["openaps"] != nil {
-                return .automaticBolus // Trio / iAPS / AAPS SMB
+                return .automaticBolus
             }
         }
         return nil

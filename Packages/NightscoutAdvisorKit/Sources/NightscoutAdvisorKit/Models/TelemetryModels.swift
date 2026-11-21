@@ -133,36 +133,52 @@ public struct TargetOverrideEvent: Codable, Equatable, Sendable {
     }
 }
 
+public struct ExerciseWindowEvent: Codable, Equatable, Sendable {
+    public let startTimestamp: TimeInterval
+    public let endTimestamp: TimeInterval
+
+    public init(startTimestamp: TimeInterval, endTimestamp: TimeInterval) {
+        self.startTimestamp = startTimestamp
+        self.endTimestamp = endTimestamp
+    }
+}
+
 public struct NightscoutTelemetryBundle: Codable, Sendable {
     public let fetchedAt: Date
     public let sourceURL: String
     public let profiles: [HistoricalProfileVersion]
+    public let activeProfile: HistoricalProfileVersion?
     public let cgmSamples: [CGMSample]
     public let boluses: [BolusEvent]
     public let carbs: [CarbEvent]
     public let tempBasals: [TempBasalEvent]
     public let targetOverrides: [TargetOverrideEvent]
+    public let exerciseWindows: [ExerciseWindowEvent]
     public let detectedDosingMode: ClosedLoopDosingMode?
 
     public init(
         fetchedAt: Date,
         sourceURL: String,
         profiles: [HistoricalProfileVersion],
+        activeProfile: HistoricalProfileVersion? = nil,
         cgmSamples: [CGMSample],
         boluses: [BolusEvent],
         carbs: [CarbEvent],
         tempBasals: [TempBasalEvent],
         targetOverrides: [TargetOverrideEvent],
+        exerciseWindows: [ExerciseWindowEvent] = [],
         detectedDosingMode: ClosedLoopDosingMode? = nil
     ) {
         self.fetchedAt = fetchedAt
         self.sourceURL = sourceURL
         self.profiles = profiles
+        self.activeProfile = activeProfile ?? profiles.last
         self.cgmSamples = cgmSamples
         self.boluses = boluses
         self.carbs = carbs
         self.tempBasals = tempBasalSorted(tempBasals)
         self.targetOverrides = targetOverrides
+        self.exerciseWindows = exerciseWindows.sorted { $0.startTimestamp < $1.startTimestamp }
         self.detectedDosingMode = detectedDosingMode
     }
 }
