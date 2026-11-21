@@ -12,7 +12,7 @@ public struct NightscoutClient: Sendable {
         public var errorDescription: String? {
             switch self {
             case .invalidURL:
-                return "Please enter a valid Nightscout URL (for example, https://your-site.t1pal.com)."
+                return "Please enter a valid Nightscout URL (for example, https://your-nightscout-host.example.com)."
             case .unauthorized:
                 return "Nightscout returned 401/403 Unauthorized. Add a Read-Only API Token or API Secret in Settings."
             case .httpError(let code):

@@ -74,7 +74,7 @@ struct OnboardingWelcomeView: View {
                 }
 
                 Section("Nightscout Connection") {
-                    TextField("https://your-site.t1pal.com", text: $viewModel.credentials.baseURLString)
+                    TextField("Nightscout URL (https://…)", text: $viewModel.credentials.baseURLString)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()

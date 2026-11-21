@@ -398,7 +398,7 @@
 				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
-				INFOPLIST_KEY_CFBundleDisplayName = "Nightscout Advisor";
+				INFOPLIST_KEY_CFBundleDisplayName = "NS Advisor";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -422,7 +422,7 @@
 				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
-				INFOPLIST_KEY_CFBundleDisplayName = "Nightscout Advisor";
+				INFOPLIST_KEY_CFBundleDisplayName = "NS Advisor";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
