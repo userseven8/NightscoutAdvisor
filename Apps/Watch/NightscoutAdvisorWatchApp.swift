@@ -24,8 +24,17 @@ final class WatchAdvisorViewModel: ObservableObject {
 
     init() {
         WatchSyncBridge.shared.activate()
-        self.summary = AdvisorStore.shared.loadWatchSummary()
-        self.urlString = AdvisorStore.shared.loadCredentials().baseURLString
+        let cached = AdvisorStore.shared.loadWatchSummary()
+        let creds = AdvisorStore.shared.loadCredentials()
+        self.summary = cached
+        self.urlString = creds.baseURLString
+
+        if creds.normalizedBaseURL != nil {
+            let isStale = cached.map { Date().timeIntervalSince($0.generatedAt) > 1800 } ?? true
+            if isStale {
+                Task { await refreshOnWatch() }
+            }
+        }
     }
 
     func refreshOnWatch() async {

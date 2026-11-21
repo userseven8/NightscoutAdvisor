@@ -23,6 +23,13 @@ final class AdvisorViewModel: ObservableObject {
         self.report = cached
         self.isDemoMode = cached?.sourceURL.hasPrefix("demo://") == true
         WatchSyncBridge.shared.activate()
+
+        if savedCreds.normalizedBaseURL != nil {
+            let isStale = cached.map { Date().timeIntervalSince($0.generatedAt) > 1800 } ?? true
+            if isStale {
+                Task { await refreshFromNightscout() }
+            }
+        }
     }
 
     var hasNightscoutURL: Bool {

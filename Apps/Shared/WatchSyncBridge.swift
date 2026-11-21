@@ -36,6 +36,9 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         config: TherapySettingsConfig
     ) {
         AdvisorStore.shared.saveWatchSummary(summary)
+        DispatchQueue.main.async {
+            self.latestWatchSummary = summary
+        }
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()
         #endif
@@ -48,7 +51,27 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         guard session.isPaired && session.isWatchAppInstalled else { return }
         #endif
 
-        var payload: [String: Any] = [:]
+        let payload = encodePayload(summary: summary, credentials: credentials, config: config)
+        try? session.updateApplicationContext(payload)
+        #if os(iOS)
+        if session.isComplicationEnabled {
+            session.transferCurrentComplicationUserInfo(payload)
+        } else {
+            session.transferUserInfo(payload)
+        }
+        #endif
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        }
+        #endif
+    }
+
+    private func encodePayload(
+        summary: WatchAdvisorSummary,
+        credentials: NightscoutCredentials,
+        config: TherapySettingsConfig
+    ) -> [String: Any] {
+        var payload: [String: Any] = ["ts": Date().timeIntervalSince1970]
         if let sData = try? JSONEncoder().encode(summary) {
             payload[summaryContextKey] = sData
         }
@@ -58,8 +81,7 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         if let cfgData = try? JSONEncoder().encode(config) {
             payload[configContextKey] = cfgData
         }
-        try? session.updateApplicationContext(payload)
-        #endif
+        return payload
     }
 }
 
@@ -70,12 +92,29 @@ extension WatchSyncBridge: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
     ) {
-        if activationState == .activated {
-            let existing = session.receivedApplicationContext
-            if !existing.isEmpty {
-                handleIncomingPayload(existing)
+        guard activationState == .activated else { return }
+        let existing = session.receivedApplicationContext
+        if !existing.isEmpty {
+            handleIncomingPayload(existing)
+        }
+        #if os(iOS)
+        // Automatically push latest cached report to Watch whenever iOS session activates
+        if session.isPaired && session.isWatchAppInstalled,
+           let cachedReport = AdvisorStore.shared.loadCachedReport() {
+            let freshSummary = cachedReport.makeWatchSummary()
+            AdvisorStore.shared.saveWatchSummary(freshSummary)
+            let creds = AdvisorStore.shared.loadCredentials()
+            let cfg = AdvisorStore.shared.loadConfig()
+            let payload = encodePayload(summary: freshSummary, credentials: creds, config: cfg)
+            try? session.updateApplicationContext(payload)
+            if session.isComplicationEnabled {
+                session.transferCurrentComplicationUserInfo(payload)
+            }
+            if session.isReachable {
+                session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
             }
         }
+        #endif
     }
 
     #if os(iOS)
@@ -87,6 +126,14 @@ extension WatchSyncBridge: WCSessionDelegate {
 
     public func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         handleIncomingPayload(applicationContext)
+    }
+
+    public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        handleIncomingPayload(userInfo)
+    }
+
+    public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        handleIncomingPayload(message)
     }
 
     private func handleIncomingPayload(_ context: [String: Any]) {

@@ -234,6 +234,22 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
             crText = "In Range"
         }
 
+        let isfIsOK = isfSchedule.allSatisfy(\.status.isAlignedOrInCI)
+        let targetIsOK = targetSchedule.allSatisfy(\.status.isAlignedOrInCI)
+
+        let isfText: String = {
+            let cur = displayUnit.formatISF(globalISF.currentMgdLPerU, includeUnit: false)
+            let rec = displayUnit.formatISF(globalISF.recommendedMgdLPerU, includeUnit: false)
+            return isfIsOK ? cur : "\(cur) → \(rec)"
+        }()
+
+        let targetText: String = {
+            guard let t = targetSchedule.first else { return "—" }
+            let cur = "\(displayUnit.formatBG(t.currentLowMgdL))–\(displayUnit.formatBG(t.currentHighMgdL))"
+            let rec = "\(displayUnit.formatBG(t.recommendedLowMgdL))–\(displayUnit.formatBG(t.recommendedHighMgdL))"
+            return targetIsOK ? cur : "→ \(rec)"
+        }()
+
         return WatchAdvisorSummary(
             generatedAt: generatedAt,
             displayUnit: displayUnit,
@@ -248,16 +264,14 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
             alignedSections: alignedSectionCount,
             adjustmentsCount: actions.count,
             actionItems: actions,
-            isfAligned: isfSchedule.allSatisfy(\.status.isAlignedOrInCI),
+            isfAligned: isfIsOK,
             basalAligned: basalSchedule.allSatisfy(\.status.isAlignedOrInCI),
             crAligned: carbRatioSchedule.allSatisfy(\.status.isAlignedOrInCI),
-            targetAligned: targetSchedule.allSatisfy(\.status.isAlignedOrInCI),
-            headlineISF: displayUnit.formatISF(globalISF.recommendedMgdLPerU, includeUnit: false),
+            targetAligned: targetIsOK,
+            headlineISF: isfText,
             headlineBasal: basalText,
             headlineCR: crText,
-            headlineTarget: targetSchedule.first.map {
-                "\(displayUnit.formatBG($0.recommendedLowMgdL))–\(displayUnit.formatBG($0.recommendedHighMgdL))"
-            } ?? "—"
+            headlineTarget: targetText
         )
     }
 }

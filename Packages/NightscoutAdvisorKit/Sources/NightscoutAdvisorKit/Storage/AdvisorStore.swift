@@ -6,11 +6,15 @@ public final class AdvisorStore: @unchecked Sendable {
 
     public static let defaultAppGroup = "group.org.nightscout.NightscoutAdvisor"
     private let defaults: UserDefaults
+    private let containerURL: URL?
 
-    private let settingsKey = "therapy_settings_config_v1"
-    private let reportCacheKey = "cached_advisor_report_v1"
-    private let watchSummaryKey = "cached_watch_summary_v1"
-    private let urlFallbackKey = "nightscout_base_url_v1"
+    private let settingsKey = "therapy_settings_config_v2"
+    private let reportCacheKey = "cached_advisor_report_v2"
+    private let watchSummaryKey = "cached_watch_summary_v2"
+    private let sharedCredsKey = "shared_nightscout_creds_v2"
+
+    private let watchSummaryFilename = "watch_summary_v2.json"
+    private let sharedCredsFilename = "shared_creds_v2.json"
 
     private let keychainService = "org.nightscout.NightscoutAdvisor.credentials"
     private let keychainAccount = "nightscout_primary"
@@ -24,13 +28,21 @@ public final class AdvisorStore: @unchecked Sendable {
         } else {
             self.defaults = .standard
         }
+        if !resolvedGroup.isEmpty {
+            self.containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: resolvedGroup)
+        } else {
+            self.containerURL = nil
+        }
     }
 
-    // MARK: - Credentials (Keychain + Shared URL Fallback for Watch/Extensions)
+    // MARK: - Credentials (Keychain + Shared App Group Container for Watch & Complications)
 
     public func saveCredentials(_ credentials: NightscoutCredentials) {
-        defaults.set(credentials.baseURLString, forKey: urlFallbackKey)
         guard let encoded = try? JSONEncoder().encode(credentials) else { return }
+        defaults.set(encoded, forKey: sharedCredsKey)
+        if let dir = containerURL {
+            try? encoded.write(to: dir.appendingPathComponent(sharedCredsFilename), options: .atomic)
+        }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -57,11 +69,20 @@ public final class AdvisorStore: @unchecked Sendable {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecSuccess,
            let data = item as? Data,
+           let creds = try? JSONDecoder().decode(NightscoutCredentials.self, from: data),
+           !creds.baseURLString.isEmpty {
+            return creds
+        }
+        if let dir = containerURL,
+           let data = try? Data(contentsOf: dir.appendingPathComponent(sharedCredsFilename)),
            let creds = try? JSONDecoder().decode(NightscoutCredentials.self, from: data) {
             return creds
         }
-        let fallbackURL = defaults.string(forKey: urlFallbackKey) ?? ""
-        return NightscoutCredentials(baseURLString: fallbackURL)
+        if let data = defaults.data(forKey: sharedCredsKey),
+           let creds = try? JSONDecoder().decode(NightscoutCredentials.self, from: data) {
+            return creds
+        }
+        return NightscoutCredentials()
     }
 
     // MARK: - Therapy Settings Config
@@ -83,8 +104,7 @@ public final class AdvisorStore: @unchecked Sendable {
     // MARK: - Cached Advisor Report & Watch Complication Summary
 
     public func saveReport(_ report: AdvisorReport) {
-        let encoder = JSONEncoder()
-        if let data = try? encoder.encode(report) {
+        if let data = try? JSONEncoder().encode(report) {
             defaults.set(data, forKey: reportCacheKey)
         }
         saveWatchSummary(report.makeWatchSummary())
@@ -96,12 +116,19 @@ public final class AdvisorStore: @unchecked Sendable {
     }
 
     public func saveWatchSummary(_ summary: WatchAdvisorSummary) {
-        if let data = try? JSONEncoder().encode(summary) {
-            defaults.set(data, forKey: watchSummaryKey)
+        guard let data = try? JSONEncoder().encode(summary) else { return }
+        if let dir = containerURL {
+            try? data.write(to: dir.appendingPathComponent(watchSummaryFilename), options: .atomic)
         }
+        defaults.set(data, forKey: watchSummaryKey)
     }
 
     public func loadWatchSummary() -> WatchAdvisorSummary? {
+        if let dir = containerURL,
+           let data = try? Data(contentsOf: dir.appendingPathComponent(watchSummaryFilename)),
+           let summary = try? JSONDecoder().decode(WatchAdvisorSummary.self, from: data) {
+            return summary
+        }
         guard let data = defaults.data(forKey: watchSummaryKey) else { return nil }
         return try? JSONDecoder().decode(WatchAdvisorSummary.self, from: data)
     }
