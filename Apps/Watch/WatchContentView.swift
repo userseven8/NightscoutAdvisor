@@ -87,22 +87,38 @@ struct WatchContentView: View {
                 }
                 .navigationTitle("NS Advisor")
             } else {
-                VStack(spacing: 10) {
-                    Image(systemName: "iphone.and.arrow.forward")
-                        .font(.title3)
-                        .foregroundStyle(.teal)
-                    Text("Connect Nightscout on your iPhone first.")
-                        .font(.caption)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                    if !model.urlString.isEmpty {
-                        Button("Sync Now") {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        Image(systemName: "iphone.and.arrow.forward")
+                            .font(.title3)
+                            .foregroundStyle(.teal)
+                        Text("Sync from iPhone or enter URL")
+                            .font(.caption2)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+
+                        Button("Sync from iPhone") {
+                            WatchSyncBridge.shared.requestImmediatePullFromPhone()
                             Task { await model.refreshOnWatch() }
                         }
                         .font(.caption)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.teal)
+
+                        TextField("Nightscout URL", text: $model.urlString)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.caption2)
+
+                        if !model.urlString.isEmpty {
+                            Button("Connect URL") {
+                                Task { await model.refreshOnWatch() }
+                            }
+                            .font(.caption2)
+                        }
                     }
+                    .padding(.horizontal, 4)
                 }
-                .padding()
                 .navigationTitle("NS Advisor")
             }
         }

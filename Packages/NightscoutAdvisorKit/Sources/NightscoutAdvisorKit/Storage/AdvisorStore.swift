@@ -20,9 +20,23 @@ public final class AdvisorStore: @unchecked Sendable {
     private let keychainAccount = "nightscout_primary"
 
     public init(appGroupIdentifier: String? = nil) {
-        let resolvedGroup = appGroupIdentifier
-            ?? (Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String)
-            ?? AdvisorStore.defaultAppGroup
+        let infoGroup = (Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let bundleDerivedGroup: String? = {
+            guard var bid = Bundle.main.bundleIdentifier, !bid.isEmpty else { return nil }
+            if bid.hasSuffix(".watchkitapp.widgets") {
+                bid = String(bid.dropLast(".watchkitapp.widgets".count))
+            } else if bid.hasSuffix(".watchkitapp") {
+                bid = String(bid.dropLast(".watchkitapp".count))
+            }
+            return "group.\(bid)"
+        }()
+        let resolvedGroup: String = {
+            if let explicit = appGroupIdentifier, !explicit.isEmpty { return explicit }
+            if let info = infoGroup, !info.isEmpty, !info.contains("$(") { return info }
+            if let derived = bundleDerivedGroup { return derived }
+            return AdvisorStore.defaultAppGroup
+        }()
         if !resolvedGroup.isEmpty, let groupDefaults = UserDefaults(suiteName: resolvedGroup) {
             self.defaults = groupDefaults
         } else {

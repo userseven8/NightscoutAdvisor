@@ -34,10 +34,19 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
     public func requestImmediatePullFromPhone() {
         #if os(watchOS) && canImport(WatchConnectivity)
         let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else { return }
-        session.sendMessage([requestSyncKey: true]) { [weak self] reply in
-            self?.handleIncomingPayload(reply)
-        } errorHandler: { _ in }
+        guard session.activationState == .activated else {
+            session.activate()
+            return
+        }
+        let existing = session.receivedApplicationContext
+        if !existing.isEmpty {
+            handleIncomingPayload(existing)
+        }
+        if session.isReachable {
+            session.sendMessage([requestSyncKey: true]) { [weak self] reply in
+                self?.handleIncomingPayload(reply)
+            } errorHandler: { _ in }
+        }
         #endif
     }
 
@@ -59,7 +68,7 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         let session = WCSession.default
         guard session.activationState == .activated else { return }
         #if os(iOS)
-        guard session.isPaired && session.isWatchAppInstalled else { return }
+        guard session.isPaired else { return }
         #endif
 
         let payload = encodePayload(summary: summary, credentials: credentials, config: config)
@@ -67,10 +76,31 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         #if os(iOS)
         if session.isComplicationEnabled {
             session.transferCurrentComplicationUserInfo(payload)
-        } else {
-            session.transferUserInfo(payload)
+        }
+        session.transferUserInfo(payload)
+        #endif
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
         }
         #endif
+    }
+
+    private func pushLatestFromPhoneIfAvailable(_ session: WCSession) {
+        #if os(iOS) && canImport(WatchConnectivity)
+        guard session.activationState == .activated, session.isPaired else { return }
+        let creds = AdvisorStore.shared.loadCredentials()
+        let cfg = AdvisorStore.shared.loadConfig()
+        let summary = AdvisorStore.shared.loadCachedReport()?.makeWatchSummary() ?? AdvisorStore.shared.loadWatchSummary()
+        if let summary {
+            AdvisorStore.shared.saveWatchSummary(summary)
+        }
+        guard summary != nil || creds.normalizedBaseURL != nil else { return }
+        let payload = encodePayload(summary: summary, credentials: creds, config: cfg)
+        try? session.updateApplicationContext(payload)
+        if session.isComplicationEnabled {
+            session.transferCurrentComplicationUserInfo(payload)
+        }
+        session.transferUserInfo(payload)
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
         }
@@ -109,31 +139,24 @@ extension WatchSyncBridge: WCSessionDelegate {
             handleIncomingPayload(existing)
         }
         #if os(iOS)
-        if session.isPaired && session.isWatchAppInstalled {
-            let creds = AdvisorStore.shared.loadCredentials()
-            let cfg = AdvisorStore.shared.loadConfig()
-            let summary = AdvisorStore.shared.loadCachedReport()?.makeWatchSummary() ?? AdvisorStore.shared.loadWatchSummary()
-            if let summary {
-                AdvisorStore.shared.saveWatchSummary(summary)
-            }
-            if summary != nil || creds.normalizedBaseURL != nil {
-                let payload = encodePayload(summary: summary, credentials: creds, config: cfg)
-                try? session.updateApplicationContext(payload)
-                if session.isComplicationEnabled {
-                    session.transferCurrentComplicationUserInfo(payload)
-                }
-                if session.isReachable {
-                    session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
-                }
-            }
-        }
+        pushLatestFromPhoneIfAvailable(session)
         #elseif os(watchOS)
-        // Wake companion iPhone in background to pull latest summary & credentials immediately
         if session.isReachable {
             session.sendMessage([requestSyncKey: true]) { [weak self] reply in
                 self?.handleIncomingPayload(reply)
             } errorHandler: { _ in }
         }
+        #endif
+    }
+
+    public func sessionReachabilityDidChange(_ session: WCSession) {
+        guard session.isReachable else { return }
+        #if os(iOS)
+        pushLatestFromPhoneIfAvailable(session)
+        #elseif os(watchOS)
+        session.sendMessage([requestSyncKey: true]) { [weak self] reply in
+            self?.handleIncomingPayload(reply)
+        } errorHandler: { _ in }
         #endif
     }
 
