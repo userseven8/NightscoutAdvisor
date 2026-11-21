@@ -29,6 +29,15 @@ final class WatchAdvisorViewModel: ObservableObject {
         self.summary = cached
         self.urlString = creds.baseURLString
 
+        if ProcessInfo.processInfo.arguments.contains("--demo-screenshots") {
+            let cfg = AdvisorStore.shared.loadConfig()
+            let demoBundle = DemoTelemetryGenerator.makeSyntheticBundle(days: cfg.rollingDays, units: .mgdL)
+            if let demoReport = try? TherapyAdvisorSolver.solve(bundle: demoBundle, config: cfg) {
+                self.summary = demoReport.makeWatchSummary()
+            }
+            return
+        }
+
         if creds.normalizedBaseURL != nil {
             let isStale = cached.map { Date().timeIntervalSince($0.generatedAt) > 1800 } ?? true
             if isStale {

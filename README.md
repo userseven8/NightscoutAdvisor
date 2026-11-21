@@ -1,8 +1,19 @@
-# Nightscout Advisor (iOS + watchOS + Complications)
+<p align="center">
+  <img src="Apps/Shared/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="108" style="border-radius: 24px;" alt="NS Advisor Icon" />
+</p>
+
+# Nightscout Advisor (`NS Advisor` for iOS & watchOS)
 
 **First-Principles Closed-Loop Telemetry & Therapy Schedule Advisor for Nightscout.**
 
 Nightscout Advisor connects directly from your iPhone and Apple Watch to any **Nightscout** instance (`mg/dL` or `mmol/L`)—compatible across automated insulin delivery systems (`Trio`, `AndroidAPS`, `iAPS`, `OpenAPS`, `Loop`, and other Nightscout-connected controllers)—and runs a coupled 4-stage insulin-kinetics & stochastic control solver **100% on-device** with zero cloud intermediaries, zero data collection, and zero heuristic block hacks.
+
+<p align="center">
+  <img src="docs/screenshots/iphone-overview.png" width="320" alt="iPhone NS Advisor Overview" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/watch-overview.png" width="210" alt="Apple Watch NS Advisor Overview" />
+</p>
+<p align="center"><em>Shown above using built-in Synthetic Demo Telemetry (zero personal health data).</em></p>
 
 ---
 

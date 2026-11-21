@@ -26,13 +26,14 @@ struct WatchContentView: View {
                         }
                         .padding(.horizontal, 4)
 
-                        // If adjustments exist, surface the exact action lines first
+                        // Surface up to 2 top action lines above the 4-schedule overview
                         if !sum.effectiveActions.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(sum.effectiveActions, id: \.self) { act in
+                            VStack(alignment: .leading, spacing: 3) {
+                                ForEach(Array(sum.effectiveActions.prefix(2)), id: \.self) { act in
                                     Text(act)
-                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .font(.caption2.monospacedDigit().weight(.semibold))
                                         .foregroundStyle(Color.orange)
+                                        .lineLimit(1)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
