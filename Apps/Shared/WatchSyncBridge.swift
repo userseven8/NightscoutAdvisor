@@ -15,6 +15,7 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
     private let summaryContextKey = "watch_advisor_summary_json"
     private let credsContextKey = "nightscout_creds_json"
     private let configContextKey = "therapy_config_json"
+    private let requestSyncKey = "request_sync_from_watch"
 
     private override init() {
         super.init()
@@ -27,6 +28,16 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         let session = WCSession.default
         session.delegate = self
         session.activate()
+        #endif
+    }
+
+    public func requestImmediatePullFromPhone() {
+        #if os(watchOS) && canImport(WatchConnectivity)
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+        session.sendMessage([requestSyncKey: true]) { [weak self] reply in
+            self?.handleIncomingPayload(reply)
+        } errorHandler: { _ in }
         #endif
     }
 
@@ -67,12 +78,12 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
     }
 
     private func encodePayload(
-        summary: WatchAdvisorSummary,
+        summary: WatchAdvisorSummary?,
         credentials: NightscoutCredentials,
         config: TherapySettingsConfig
     ) -> [String: Any] {
         var payload: [String: Any] = ["ts": Date().timeIntervalSince1970]
-        if let sData = try? JSONEncoder().encode(summary) {
+        if let summary, let sData = try? JSONEncoder().encode(summary) {
             payload[summaryContextKey] = sData
         }
         if let cData = try? JSONEncoder().encode(credentials) {
@@ -98,21 +109,30 @@ extension WatchSyncBridge: WCSessionDelegate {
             handleIncomingPayload(existing)
         }
         #if os(iOS)
-        // Automatically push latest cached report to Watch whenever iOS session activates
-        if session.isPaired && session.isWatchAppInstalled,
-           let cachedReport = AdvisorStore.shared.loadCachedReport() {
-            let freshSummary = cachedReport.makeWatchSummary()
-            AdvisorStore.shared.saveWatchSummary(freshSummary)
+        if session.isPaired && session.isWatchAppInstalled {
             let creds = AdvisorStore.shared.loadCredentials()
             let cfg = AdvisorStore.shared.loadConfig()
-            let payload = encodePayload(summary: freshSummary, credentials: creds, config: cfg)
-            try? session.updateApplicationContext(payload)
-            if session.isComplicationEnabled {
-                session.transferCurrentComplicationUserInfo(payload)
+            let summary = AdvisorStore.shared.loadCachedReport()?.makeWatchSummary() ?? AdvisorStore.shared.loadWatchSummary()
+            if let summary {
+                AdvisorStore.shared.saveWatchSummary(summary)
             }
-            if session.isReachable {
-                session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+            if summary != nil || creds.normalizedBaseURL != nil {
+                let payload = encodePayload(summary: summary, credentials: creds, config: cfg)
+                try? session.updateApplicationContext(payload)
+                if session.isComplicationEnabled {
+                    session.transferCurrentComplicationUserInfo(payload)
+                }
+                if session.isReachable {
+                    session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+                }
             }
+        }
+        #elseif os(watchOS)
+        // Wake companion iPhone in background to pull latest summary & credentials immediately
+        if session.isReachable {
+            session.sendMessage([requestSyncKey: true]) { [weak self] reply in
+                self?.handleIncomingPayload(reply)
+            } errorHandler: { _ in }
         }
         #endif
     }
@@ -134,6 +154,24 @@ extension WatchSyncBridge: WCSessionDelegate {
 
     public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         handleIncomingPayload(message)
+    }
+
+    public func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        #if os(iOS)
+        if message[requestSyncKey] as? Bool == true {
+            let creds = AdvisorStore.shared.loadCredentials()
+            let cfg = AdvisorStore.shared.loadConfig()
+            let summary = AdvisorStore.shared.loadCachedReport()?.makeWatchSummary() ?? AdvisorStore.shared.loadWatchSummary()
+            replyHandler(encodePayload(summary: summary, credentials: creds, config: cfg))
+            return
+        }
+        #endif
+        handleIncomingPayload(message)
+        replyHandler([:])
     }
 
     private func handleIncomingPayload(_ context: [String: Any]) {

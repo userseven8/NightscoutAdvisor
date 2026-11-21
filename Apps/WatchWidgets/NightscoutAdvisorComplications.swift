@@ -31,9 +31,8 @@ struct AdvisorComplicationProvider: TimelineProvider {
 
         let creds = store.loadCredentials()
         guard creds.normalizedBaseURL != nil else {
-            // Not synced yet — show honest "Sync" prompt rather than fake placeholder data
             let existing = store.loadWatchSummary()
-            let next = Date().addingTimeInterval(900)
+            let next = Date().addingTimeInterval(600)
             completion(Timeline(entries: [AdvisorComplicationEntry(date: Date(), summary: existing)], policy: .after(next)))
             return
         }
@@ -78,22 +77,13 @@ struct AdvisorComplicationEntryView: View {
             ZStack {
                 AccessoryWidgetBackground()
                 if count == 0 {
-                    VStack(spacing: 1) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.green)
-                        Text("SYNC")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                    }
+                    Image(systemName: "checkmark")
+                        .font(.system(.title2, design: .rounded).weight(.bold))
+                        .foregroundStyle(Color.green)
                 } else {
-                    VStack(spacing: 0) {
-                        Text("\(count)")
-                            .font(.system(.title3, design: .rounded).weight(.bold))
-                            .foregroundStyle(.orange)
-                        Text(count == 1 ? "ADJ" : "ADJS")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("\(count)")
+                        .font(.system(.title2, design: .rounded).weight(.bold))
+                        .foregroundStyle(Color.orange)
                 }
             }
 
@@ -102,14 +92,11 @@ struct AdvisorComplicationEntryView: View {
                 HStack(spacing: 4) {
                     Image(systemName: count == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
                         .foregroundStyle(count == 0 ? Color.green : Color.orange)
-                    Text(count == 0 ? "Settings In Sync" : "\(count) Update\(count == 1 ? "" : "s")")
+                    Text(count == 0 ? "All Good" : "\(count) Update\(count == 1 ? "" : "s")")
                         .font(.caption2.weight(.bold))
                 }
 
                 if count == 0 {
-                    Text("All 4 schedules match")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                     Text("ISF \(summary.headlineISF) • \(summary.headlineTarget)")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -133,20 +120,24 @@ struct AdvisorComplicationEntryView: View {
             if let first = actions.first {
                 Text("NS: \(first)")
             } else {
-                Text("✓ Settings In Sync")
+                Text("✓ NS Advisor")
             }
 
         case .accessoryCorner:
-            Image(systemName: count == 0 ? "checkmark.circle.fill" : "exclamationmark.arrow.circlepath")
-                .font(.title3)
-                .foregroundStyle(count == 0 ? Color.green : Color.orange)
-                .widgetLabel {
-                    if let first = actions.first {
-                        Text(first)
-                    } else {
-                        Text("Settings In Sync")
+            if count == 0 {
+                Image(systemName: "checkmark")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color.green)
+            } else {
+                Text("\(count)")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color.orange)
+                    .widgetLabel {
+                        if let first = actions.first {
+                            Text(first)
+                        }
                     }
-                }
+            }
 
         default:
             Text(count == 0 ? "✓" : "\(count)")
@@ -159,30 +150,24 @@ struct AdvisorComplicationEntryView: View {
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
-                VStack(spacing: 1) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.callout)
-                    Text("SYNC")
-                        .font(.system(size: 8, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
+                Image(systemName: "ellipsis")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
             }
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 2) {
                 Text("NS Advisor")
                     .font(.caption2.weight(.bold))
-                Text("Open app to sync")
+                Text("Tap to open & sync")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         case .accessoryInline:
-            Text("NS Advisor: Tap to Sync")
+            Text("NS Advisor: —")
         case .accessoryCorner:
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .widgetLabel {
-                    Text("Tap to Sync")
-                }
+            Image(systemName: "ellipsis")
+                .foregroundStyle(.secondary)
         default:
             Text("—")
         }
@@ -199,7 +184,7 @@ struct NightscoutAdvisorComplicationsBundle: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("NS Advisor")
-        .description("Shows ✓ when settings are in sync, or highlights suggested adjustments.")
+        .description("Shows a clean ✓ when settings match, or the count of suggested adjustments.")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryRectangular,

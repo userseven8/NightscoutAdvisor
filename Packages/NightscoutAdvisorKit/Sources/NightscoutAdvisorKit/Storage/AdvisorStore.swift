@@ -124,12 +124,20 @@ public final class AdvisorStore: @unchecked Sendable {
     }
 
     public func loadWatchSummary() -> WatchAdvisorSummary? {
-        if let dir = containerURL,
-           let data = try? Data(contentsOf: dir.appendingPathComponent(watchSummaryFilename)),
-           let summary = try? JSONDecoder().decode(WatchAdvisorSummary.self, from: data) {
-            return summary
+        if let dir = containerURL {
+            for fname in [watchSummaryFilename, "watch_summary_v3.json", "watch_summary_v2.json"] {
+                if let data = try? Data(contentsOf: dir.appendingPathComponent(fname)),
+                   let summary = try? JSONDecoder().decode(WatchAdvisorSummary.self, from: data) {
+                    return summary
+                }
+            }
         }
-        guard let data = defaults.data(forKey: watchSummaryKey) else { return nil }
-        return try? JSONDecoder().decode(WatchAdvisorSummary.self, from: data)
+        for key in [watchSummaryKey, "cached_watch_summary_v3", "cached_watch_summary_v2", "cached_watch_summary_v1"] {
+            if let data = defaults.data(forKey: key),
+               let summary = try? JSONDecoder().decode(WatchAdvisorSummary.self, from: data) {
+                return summary
+            }
+        }
+        return nil
     }
 }
