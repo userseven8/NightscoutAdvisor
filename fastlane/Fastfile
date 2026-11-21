@@ -1,0 +1,58 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Register App IDs + App Group, sync Match certificates, build iOS + watchOS + Complications, and upload to TestFlight"
+  lane :release_testflight do
+    setup_ci if ENV["CI"]
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("FASTLANE_KEY_ID"),
+      issuer_id: ENV.fetch("FASTLANE_ISSUER_ID"),
+      key_content: ENV.fetch("FASTLANE_KEY"),
+      is_key_content_base64: false,
+      in_house: false
+    )
+
+    prefix = ENV.fetch("BUNDLE_ID_PREFIX")
+    ios_id = prefix
+    watch_id = "#{prefix}.watchkitapp"
+    widgets_id = "#{watch_id}.widgets"
+    app_group = "group.#{prefix}"
+
+    [
+      [ios_id, "Nightscout Advisor"],
+      [watch_id, "NS Advisor"],
+      [widgets_id, "NS Advisor Widgets"]
+    ].each do |bundle_id, app_name|
+      produce(
+        app_identifier: bundle_id,
+        app_name: app_name,
+        skip_itc: bundle_id != ios_id,
+        enable_services: {
+          app_group: "on"
+        }
+      )
+      sh("bundle exec fastlane produce associate_group -a #{bundle_id} #{app_group} || true")
+    end
+
+    match(
+      type: "appstore",
+      app_identifier: [ios_id, watch_id, widgets_id],
+      api_key: api_key,
+      force_for_new_devices: true
+    )
+
+    build_app(
+      project: "NightscoutAdvisor.xcodeproj",
+      scheme: "NightscoutAdvisor",
+      export_method: "app-store",
+      xcargs: "CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=#{ENV.fetch('TEAM_ID')} " \
+              "PROVISIONING_PROFILE_SPECIFIER='match AppStore #{ios_id}'"
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

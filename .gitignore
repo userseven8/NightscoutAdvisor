@@ -1,0 +1,24 @@
+# Xcode & Swift Package Manager
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+build/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Local Signing Overrides & Secrets (Never Commit)
+Config/NightscoutAdvisorConfigOverride.xcconfig
+*.ipa
+*.dSYM.zip
+*.mobileprovision
+*.cer
+*.p12
+*.p8
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+vendor/bundle/

@@ -1,0 +1,58 @@
+name: Build & Upload to TestFlight (DIY Browser Build)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id_prefix:
+        description: "Optional custom bundle ID prefix (defaults to org.nightscout.<team_id>.nightscoutadvisor)"
+        required: false
+        default: ""
+
+jobs:
+  build_testflight:
+    name: Sign & Upload Nightscout Advisor (iOS + watchOS)
+    runs-on: macos-15
+    env:
+      TEAM_ID: ${{ secrets.TEAM_ID }}
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+      CUSTOM_BUNDLE_PREFIX: ${{ inputs.bundle_id_prefix }}
+
+    steps:
+      - name: Validate Required DIY Loop Secrets
+        run: |
+          for secret_name in TEAM_ID FASTLANE_KEY_ID FASTLANE_ISSUER_ID FASTLANE_KEY MATCH_PASSWORD GH_PAT; do
+            if [ -z "${!secret_name}" ]; then
+              echo "::error::Missing GitHub Secret: $secret_name. Configure the standard 6 DIY Loop secrets in Settings -> Secrets and variables -> Actions."
+              exit 1
+            fi
+          done
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby & Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Configure Signing Override
+        run: |
+          PREFIX="${CUSTOM_BUNDLE_PREFIX}"
+          if [ -z "$PREFIX" ]; then
+            PREFIX="org.nightscout.${TEAM_ID,,}.nightscoutadvisor"
+          fi
+          cat <<EOF > Config/NightscoutAdvisorConfigOverride.xcconfig
+          DEVELOPMENT_TEAM = ${TEAM_ID}
+          BUNDLE_ID_PREFIX = ${PREFIX}
+          CURRENT_PROJECT_VERSION = ${GITHUB_RUN_NUMBER}
+          EOF
+          echo "BUNDLE_ID_PREFIX=${PREFIX}" >> $GITHUB_ENV
+
+      - name: Register Identifiers, Match Certificates & Upload to TestFlight
+        run: bundle exec fastlane release_testflight

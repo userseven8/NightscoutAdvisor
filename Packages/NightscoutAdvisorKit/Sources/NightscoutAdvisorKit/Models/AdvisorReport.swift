@@ -1,0 +1,285 @@
+import Foundation
+
+public enum SyncStatus: String, Codable, Sendable {
+    case inSync = "in_sync"
+    case inConfidenceInterval = "in_ci"
+    case adjustRecommended = "adjust"
+    case insufficientData = "insufficient_data"
+
+    public var badgeTitle: String {
+        switch self {
+        case .inSync: return "✓ In Sync"
+        case .inConfidenceInterval: return "✓ In 95% CI"
+        case .adjustRecommended: return "Adjust Recommended"
+        case .insufficientData: return "Profile Anchor"
+        }
+    }
+
+    public var isAlignedOrInCI: Bool {
+        self == .inSync || self == .inConfidenceInterval || self == .insufficientData
+    }
+}
+
+public struct GlycemicWindowStats: Codable, Equatable, Sendable {
+    public let label: String
+    public let sampleCount: Int
+    public let meanMgdL: Double
+    public let sdMgdL: Double
+    public let cvPercent: Double
+    public let gmiPercent: Double
+    public let tirPercent: Double       // 70 - 180 mg/dL
+    public let tbrPercent: Double       // < 70 mg/dL
+    public let veryLowPercent: Double   // < 54 mg/dL
+    public let tarPercent: Double       // > 180 mg/dL
+    public let veryHighPercent: Double  // > 250 mg/dL
+
+    public init(
+        label: String,
+        sampleCount: Int,
+        meanMgdL: Double,
+        sdMgdL: Double,
+        cvPercent: Double,
+        gmiPercent: Double,
+        tirPercent: Double,
+        tbrPercent: Double,
+        veryLowPercent: Double,
+        tarPercent: Double,
+        veryHighPercent: Double
+    ) {
+        self.label = label
+        self.sampleCount = sampleCount
+        self.meanMgdL = meanMgdL
+        self.sdMgdL = sdMgdL
+        self.cvPercent = cvPercent
+        self.gmiPercent = gmiPercent
+        self.tirPercent = tirPercent
+        self.tbrPercent = tbrPercent
+        self.veryLowPercent = veryLowPercent
+        self.tarPercent = tarPercent
+        self.veryHighPercent = veryHighPercent
+    }
+}
+
+public struct AGPBin: Codable, Equatable, Identifiable, Sendable {
+    public var id: Int { minuteOfDay }
+    public let minuteOfDay: Int
+    public let hourLabel: String
+    public let p10MgdL: Double
+    public let p25MgdL: Double
+    public let p50MgdL: Double
+    public let p75MgdL: Double
+    public let p90MgdL: Double
+
+    public init(
+        minuteOfDay: Int,
+        hourLabel: String,
+        p10MgdL: Double,
+        p25MgdL: Double,
+        p50MgdL: Double,
+        p75MgdL: Double,
+        p90MgdL: Double
+    ) {
+        self.minuteOfDay = minuteOfDay
+        self.hourLabel = hourLabel
+        self.p10MgdL = p10MgdL
+        self.p25MgdL = p25MgdL
+        self.p50MgdL = p50MgdL
+        self.p75MgdL = p75MgdL
+        self.p90MgdL = p90MgdL
+    }
+}
+
+public struct ISFRecommendation: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { timeString }
+    public let timeString: String
+    public let windowLabel: String
+    public let currentMgdLPerU: Double
+    public let recommendedMgdLPerU: Double
+    public let geometricMeanMgdLPerU: Double
+    public let ciLowMgdLPerU: Double
+    public let ciHighMgdLPerU: Double
+    public let episodeCount: Int
+    public let status: SyncStatus
+    public let rationale: String
+}
+
+public struct BasalRecommendation: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { timeString }
+    public let timeString: String
+    public let windowLabel: String
+    public let currentUnitsPerHour: Double
+    public let recommendedUnitsPerHour: Double
+    public let rawQuantileFlux: Double
+    public let medianTotalFlux: Double
+    public let ciLowUnitsPerHour: Double
+    public let ciHighUnitsPerHour: Double
+    public let fastingHourCount: Int
+    public let status: SyncStatus
+    public let rationale: String
+}
+
+public struct CarbRatioRecommendation: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { timeString }
+    public let timeString: String
+    public let windowLabel: String
+    public let currentGramsPerUnit: Double
+    public let recommendedGramsPerUnit: Double
+    public let rawWLSGramsPerUnit: Double
+    public let ciLowGramsPerUnit: Double
+    public let ciHighGramsPerUnit: Double
+    public let centeredRSquared: Double
+    public let medianPostMealTargetDeltaMgdL: Double
+    public let mealCount: Int
+    public let status: SyncStatus
+    public let rationale: String
+}
+
+public struct TargetRangeRecommendation: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { timeString }
+    public let timeString: String
+    public let windowLabel: String
+    public let currentLowMgdL: Double
+    public let currentHighMgdL: Double
+    public let recommendedLowMgdL: Double
+    public let recommendedHighMgdL: Double
+    public let optimalMidMgdL: Double
+    public let ciMidLowMgdL: Double
+    public let ciMidHighMgdL: Double
+    public let safetyFloorMidMgdL: Double
+    public let bgriScore: Double
+    public let predictedTIRPercent: Double
+    public let dayCount: Int
+    public let status: SyncStatus
+    public let rationale: String
+}
+
+public struct ControlStabilityAudit: Codable, Equatable, Sendable {
+    public let dampingRatioZeta: Double
+    public let poleSummary: String
+    public let criticalISFBoundMgdLPerU: Double
+    public let gainMarginMultiplier: Double
+    public let phaseMarginDegrees: Double
+    public let sensorJitterMgdL: Double
+    public let pumpStepImpactMgdL: Double
+    public let isOverdampedStable: Bool
+}
+
+public struct AdvisorReport: Codable, Equatable, Sendable {
+    public let generatedAt: Date
+    public let sourceURL: String
+    public let activeProfileName: String
+    public let timeZoneIdentifier: String
+    public let displayUnit: BGUnit
+    public let rollingDays: Int
+    public let settingsUsed: TherapySettingsConfig
+    public let stats24h: GlycemicWindowStats
+    public let stats7d: GlycemicWindowStats
+    public let statsRolling: GlycemicWindowStats
+    public let agpBins: [AGPBin]
+    public let globalISF: ISFRecommendation
+    public let isfSchedule: [ISFRecommendation]
+    public let basalSchedule: [BasalRecommendation]
+    public let carbRatioSchedule: [CarbRatioRecommendation]
+    public let targetSchedule: [TargetRangeRecommendation]
+    public let stability: ControlStabilityAudit
+    public let averageDailyInsulinUnits: Double
+    public let averageDailyCarbsGrams: Double
+
+    public var alignedSectionCount: Int {
+        var count = 0
+        if isfSchedule.allSatisfy(\.status.isAlignedOrInCI) { count += 1 }
+        if basalSchedule.allSatisfy(\.status.isAlignedOrInCI) { count += 1 }
+        if carbRatioSchedule.allSatisfy(\.status.isAlignedOrInCI) { count += 1 }
+        if targetSchedule.allSatisfy(\.status.isAlignedOrInCI) { count += 1 }
+        return count
+    }
+
+    public func makeWatchSummary() -> WatchAdvisorSummary {
+        WatchAdvisorSummary(
+            generatedAt: generatedAt,
+            displayUnit: displayUnit,
+            tir24h: stats24h.tirPercent,
+            tir7d: stats7d.tirPercent,
+            tbr7d: stats7d.tbrPercent,
+            gmiRolling: statsRolling.gmiPercent,
+            dampingZeta: stability.dampingRatioZeta,
+            alignedSections: alignedSectionCount,
+            isfAligned: isfSchedule.allSatisfy(\.status.isAlignedOrInCI),
+            basalAligned: basalSchedule.allSatisfy(\.status.isAlignedOrInCI),
+            crAligned: carbRatioSchedule.allSatisfy(\.status.isAlignedOrInCI),
+            targetAligned: targetSchedule.allSatisfy(\.status.isAlignedOrInCI),
+            headlineISF: "\(displayUnit.formatISF(globalISF.recommendedMgdLPerU, includeUnit: true))",
+            headlineTarget: targetSchedule.first.map {
+                "\(displayUnit.formatBG($0.recommendedLowMgdL))–\(displayUnit.formatBG($0.recommendedHighMgdL)) \(displayUnit.rawValue)"
+            } ?? "—"
+        )
+    }
+}
+
+public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
+    public let generatedAt: Date
+    public let displayUnit: BGUnit
+    public let tir24h: Double
+    public let tir7d: Double
+    public let tbr7d: Double
+    public let gmiRolling: Double
+    public let dampingZeta: Double
+    public let alignedSections: Int
+    public let isfAligned: Bool
+    public let basalAligned: Bool
+    public let crAligned: Bool
+    public let targetAligned: Bool
+    public let headlineISF: String
+    public let headlineTarget: String
+
+    public init(
+        generatedAt: Date,
+        displayUnit: BGUnit,
+        tir24h: Double,
+        tir7d: Double,
+        tbr7d: Double,
+        gmiRolling: Double,
+        dampingZeta: Double,
+        alignedSections: Int,
+        isfAligned: Bool,
+        basalAligned: Bool,
+        crAligned: Bool,
+        targetAligned: Bool,
+        headlineISF: String,
+        headlineTarget: String
+    ) {
+        self.generatedAt = generatedAt
+        self.displayUnit = displayUnit
+        self.tir24h = tir24h
+        self.tir7d = tir7d
+        self.tbr7d = tbr7d
+        self.gmiRolling = gmiRolling
+        self.dampingZeta = dampingZeta
+        self.alignedSections = alignedSections
+        self.isfAligned = isfAligned
+        self.basalAligned = basalAligned
+        self.crAligned = crAligned
+        self.targetAligned = targetAligned
+        self.headlineISF = headlineISF
+        self.headlineTarget = headlineTarget
+    }
+
+    public static var placeholder: WatchAdvisorSummary {
+        WatchAdvisorSummary(
+            generatedAt: Date(),
+            displayUnit: .mgdL,
+            tir24h: 91.2,
+            tir7d: 86.6,
+            tbr7d: 1.8,
+            gmiRolling: 6.4,
+            dampingZeta: 1.04,
+            alignedSections: 4,
+            isfAligned: true,
+            basalAligned: true,
+            crAligned: true,
+            targetAligned: true,
+            headlineISF: "125 mg/dL/U",
+            headlineTarget: "105–120 mg/dL"
+        )
+    }
+}

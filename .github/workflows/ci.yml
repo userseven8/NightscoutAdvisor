@@ -1,0 +1,28 @@
+name: CI — Swift Tests & iOS/watchOS Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    name: Test NightscoutAdvisorKit & Build Targets
+    runs-on: macos-15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run NightscoutAdvisorKit Unit Tests
+        working-directory: Packages/NightscoutAdvisorKit
+        run: swift test
+
+      - name: Build iOS + watchOS + Complications (Unsigned Simulator)
+        run: |
+          xcodebuild \
+            -project NightscoutAdvisor.xcodeproj \
+            -scheme NightscoutAdvisor \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

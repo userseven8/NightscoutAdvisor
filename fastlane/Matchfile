@@ -1,0 +1,4 @@
+git_url("https://#{ENV['GH_PAT']}@github.com/#{ENV['GITHUB_REPOSITORY_OWNER']}/Match-Certificates.git")
+storage_mode("git")
+type("appstore")
+readonly(false)
