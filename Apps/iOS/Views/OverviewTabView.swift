@@ -7,77 +7,67 @@ struct OverviewTabView: View {
     let report: AdvisorReport
     let onOpenSettings: () -> Void
 
-    @State private var selectedRangeIndex: Int = 1 // Default: 7d
     @State private var selectedDetail: ScheduleDetailItem?
 
-    private var activeStats: GlycemicWindowStats {
-        switch selectedRangeIndex {
-        case 0: return report.stats24h
-        case 1: return report.stats7d
-        default: return report.statsRolling
-        }
+    private var stats: GlycemicWindowStats {
+        report.statsRolling
     }
 
     var body: some View {
         NavigationStack {
             List {
-                // 1. Calm Top Summary & Time-in-Range Card
-                Section {
+                // 1. Unified History Window Statistics + 24-Hour AGP Together
+                Section("Last \(report.rollingDays) Days") {
                     VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            let changes = report.totalAdjustmentsCount
-                            Image(systemName: changes == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(changes == 0 ? .green : .orange)
-                            Text(changes == 0 ? "All Settings Look Good" : "\(changes) Adjustment\(changes == 1 ? "" : "s") Suggested")
-                                .font(.headline)
-                            Spacer()
-                        }
-
-                        Picker("Window", selection: $selectedRangeIndex) {
-                            Text("24h").tag(0)
-                            Text("7 Days").tag(1)
-                            Text("\(report.rollingDays) Days").tag(2)
-                        }
-                        .pickerStyle(.segmented)
-
                         HStack(spacing: 0) {
                             SimpleMetricColumn(
                                 label: "In Range",
-                                value: String(format: "%.0f%%", activeStats.tirPercent),
-                                valueColor: activeStats.tirPercent >= 70.0 ? Color.green : Color.primary
+                                value: String(format: "%.0f%%", stats.tirPercent),
+                                valueColor: stats.tirPercent >= 70.0 ? Color.green : Color.primary
                             )
                             SimpleMetricColumn(
                                 label: "Low <70",
-                                value: String(format: "%.1f%%", activeStats.tbrPercent),
-                                valueColor: activeStats.tbrPercent <= 4.0 ? Color.primary : Color.red
+                                value: String(format: "%.1f%%", stats.tbrPercent),
+                                valueColor: stats.tbrPercent <= 4.0 ? Color.primary : Color.red
                             )
                             SimpleMetricColumn(
                                 label: "Average",
-                                value: report.displayUnit.formatBG(activeStats.meanMgdL),
+                                value: report.displayUnit.formatBG(stats.meanMgdL),
                                 valueColor: Color.primary
                             )
                             SimpleMetricColumn(
                                 label: "GMI",
-                                value: String(format: "%.1f%%", activeStats.gmiPercent),
+                                value: String(format: "%.1f%%", stats.gmiPercent),
                                 valueColor: Color.secondary
                             )
                         }
+
+                        Divider()
+
+                        MinimalAGPChart(bins: report.agpBins, unit: report.displayUnit)
                     }
                     .padding(.vertical, 6)
                 }
 
-                // 2. Clean, Single-Line Therapy Schedules
+                // 2. Therapy Settings Verdict Banner
+                Section {
+                    HStack(spacing: 10) {
+                        let changes = report.totalAdjustmentsCount
+                        Image(systemName: changes == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(changes == 0 ? Color.green : Color.orange)
+                        Text(changes == 0 ? "All Settings Look Good" : "\(changes) Adjustment\(changes == 1 ? "" : "s") Suggested")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                // 3. Clean Single-Line Therapy Schedules
                 SchedulesSectionGroup(
                     report: report,
                     onSelectDetail: { selectedDetail = $0 }
                 )
-
-                // 3. Calm 24-Hour Glucose Profile
-                Section("24-Hour Glucose Pattern") {
-                    MinimalAGPChart(bins: report.agpBins, unit: report.displayUnit)
-                        .padding(.vertical, 6)
-                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("NS Advisor")
@@ -162,6 +152,6 @@ private struct MinimalAGPChart: View {
                 }
             }
         }
-        .frame(height: 155)
+        .frame(height: 150)
     }
 }

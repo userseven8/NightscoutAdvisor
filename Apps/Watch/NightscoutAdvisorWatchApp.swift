@@ -45,8 +45,7 @@ final class WatchAdvisorViewModel: ObservableObject {
 
         do {
             let cfg = store.loadConfig()
-            // On Watch, fetch 14-day window for fast wrist execution if 30d not needed, or respect cfg
-            let bundle = try await client.fetchTelemetry(credentials: creds, rollingDays: min(30, cfg.rollingDays))
+            let bundle = try await client.fetchTelemetry(credentials: creds, rollingDays: cfg.rollingDays)
             let solvedSummary = try await Task.detached(priority: .userInitiated) {
                 let rep = try TherapyAdvisorSolver.solve(bundle: bundle, config: cfg)
                 return rep.makeWatchSummary()

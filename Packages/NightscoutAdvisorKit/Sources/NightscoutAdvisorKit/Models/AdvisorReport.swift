@@ -223,6 +223,9 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
         return WatchAdvisorSummary(
             generatedAt: generatedAt,
             displayUnit: displayUnit,
+            rollingDays: rollingDays,
+            tirRolling: statsRolling.tirPercent,
+            tbrRolling: statsRolling.tbrPercent,
             tir24h: stats24h.tirPercent,
             tir7d: stats7d.tirPercent,
             tbr7d: stats7d.tbrPercent,
@@ -246,6 +249,9 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
 public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
     public let generatedAt: Date
     public let displayUnit: BGUnit
+    public let rollingDays: Int?
+    public let tirRolling: Double?
+    public let tbrRolling: Double?
     public let tir24h: Double
     public let tir7d: Double
     public let tbr7d: Double
@@ -261,9 +267,16 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
     public let headlineCR: String?
     public let headlineTarget: String
 
+    public var effectiveDays: Int { rollingDays ?? 30 }
+    public var effectiveTIR: Double { tirRolling ?? tir7d }
+    public var effectiveTBR: Double { tbrRolling ?? tbr7d }
+
     public init(
         generatedAt: Date,
         displayUnit: BGUnit,
+        rollingDays: Int? = 30,
+        tirRolling: Double? = nil,
+        tbrRolling: Double? = nil,
         tir24h: Double,
         tir7d: Double,
         tbr7d: Double,
@@ -281,6 +294,9 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
     ) {
         self.generatedAt = generatedAt
         self.displayUnit = displayUnit
+        self.rollingDays = rollingDays
+        self.tirRolling = tirRolling
+        self.tbrRolling = tbrRolling
         self.tir24h = tir24h
         self.tir7d = tir7d
         self.tbr7d = tbr7d
@@ -301,6 +317,9 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
         WatchAdvisorSummary(
             generatedAt: Date(),
             displayUnit: .mgdL,
+            rollingDays: 30,
+            tirRolling: 86.6,
+            tbrRolling: 1.8,
             tir24h: 91.2,
             tir7d: 86.6,
             tbr7d: 1.8,

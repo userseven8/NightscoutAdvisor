@@ -36,10 +36,10 @@ struct AdvisorComplicationEntryView: View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            Gauge(value: min(100.0, max(0.0, entry.summary.tir7d)), in: 0...100) {
+            Gauge(value: min(100.0, max(0.0, entry.summary.effectiveTIR)), in: 0...100) {
                 Text("TIR")
             } currentValueLabel: {
-                Text(String(format: "%.0f", entry.summary.tir7d))
+                Text(String(format: "%.0f", entry.summary.effectiveTIR))
                     .font(.system(.body, design: .rounded).weight(.bold))
             }
             .gaugeStyle(.accessoryCircularCapacity)
@@ -53,7 +53,7 @@ struct AdvisorComplicationEntryView: View {
                     Text(allGood ? "✓ OK" : "Review")
                         .font(.caption2.weight(.semibold))
                 }
-                Text(String(format: "TIR %.0f%% • Low %.1f%%", entry.summary.tir7d, entry.summary.tbr7d))
+                Text(String(format: "TIR %.0f%% • Low %.1f%%", entry.summary.effectiveTIR, entry.summary.effectiveTBR))
                     .font(.caption.monospacedDigit().weight(.semibold))
                 Text("Target \(entry.summary.headlineTarget)")
                     .font(.caption2)
@@ -61,10 +61,10 @@ struct AdvisorComplicationEntryView: View {
             }
 
         case .accessoryInline:
-            Text(String(format: "TIR %.0f%% • %@", entry.summary.tir7d, allGood ? "OK" : "Review"))
+            Text(String(format: "TIR %.0f%% • %@", entry.summary.effectiveTIR, allGood ? "OK" : "Review"))
 
         default:
-            Text(String(format: "%.0f%%", entry.summary.tir7d))
+            Text(String(format: "%.0f%%", entry.summary.effectiveTIR))
         }
     }
 }

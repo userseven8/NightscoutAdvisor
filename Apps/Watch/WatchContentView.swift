@@ -14,24 +14,24 @@ struct WatchContentView: View {
             if let sum = activeSummary {
                 ScrollView {
                     VStack(spacing: 10) {
-                        // Top Glanceable TIR & Low
+                        // Top Glanceable TIR & Low (matches chosen rolling window)
                         HStack(alignment: .lastTextBaseline) {
                             VStack(alignment: .leading, spacing: 0) {
-                                Text("7d In Range")
+                                Text("\(sum.effectiveDays)d In Range")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
-                                Text(String(format: "%.0f%%", sum.tir7d))
+                                Text(String(format: "%.0f%%", sum.effectiveTIR))
                                     .font(.system(.title2, design: .rounded).monospacedDigit().weight(.bold))
-                                    .foregroundStyle(sum.tir7d >= 70.0 ? Color.green : Color.primary)
+                                    .foregroundStyle(sum.effectiveTIR >= 70.0 ? Color.green : Color.primary)
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 0) {
                                 Text("Low")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
-                                Text(String(format: "%.1f%%", sum.tbr7d))
+                                Text(String(format: "%.1f%%", sum.effectiveTBR))
                                     .font(.callout.monospacedDigit().weight(.semibold))
-                                    .foregroundStyle(sum.tbr7d <= 4.0 ? Color.secondary : Color.red)
+                                    .foregroundStyle(sum.effectiveTBR <= 4.0 ? Color.secondary : Color.red)
                             }
                         }
                         .padding(.horizontal, 4)
