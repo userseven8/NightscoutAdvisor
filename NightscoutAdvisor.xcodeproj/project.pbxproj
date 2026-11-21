@@ -17,12 +17,14 @@
 		A10000080000000000000001 /* WatchSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000080000000000000001 /* WatchSyncBridge.swift */; };
 		A10000090000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000010000000000000001 /* NightscoutAdvisorKit */; };
 		A100000A0000000000000001 /* NightscoutAdvisorWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = F20000010000000000000001 /* NightscoutAdvisorWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A100000B0000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F100000D0000000000000001 /* Assets.xcassets */; };
 
 		A20000010000000000000001 /* NightscoutAdvisorWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000090000000000000001 /* NightscoutAdvisorWatchApp.swift */; };
 		A20000020000000000000001 /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000A0000000000000001 /* WatchContentView.swift */; };
 		A20000030000000000000001 /* WatchSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000080000000000000001 /* WatchSyncBridge.swift */; };
 		A20000040000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000020000000000000001 /* NightscoutAdvisorKit */; };
 		A20000050000000000000001 /* NightscoutAdvisorWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A20000060000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F100000D0000000000000001 /* Assets.xcassets */; };
 
 		A30000010000000000000001 /* NightscoutAdvisorComplications.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000B0000000000000001 /* NightscoutAdvisorComplications.swift */; };
 		A30000020000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000030000000000000001 /* NightscoutAdvisorKit */; };
@@ -85,6 +87,7 @@
 		F100000A0000000000000001 /* WatchContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContentView.swift; sourceTree = "<group>"; };
 		F100000B0000000000000001 /* NightscoutAdvisorComplications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightscoutAdvisorComplications.swift; sourceTree = "<group>"; };
 		F100000C0000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F100000D0000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F20000000000000000000001 /* NightscoutAdvisor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NightscoutAdvisor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000010000000000000001 /* NightscoutAdvisorWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NightscoutAdvisorWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NightscoutAdvisorWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -151,6 +154,7 @@
 			isa = PBXGroup;
 			children = (
 				F10000080000000000000001 /* WatchSyncBridge.swift */,
+				F100000D0000000000000001 /* Assets.xcassets */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -214,6 +218,7 @@
 			buildPhases = (
 				S10000010000000000000001 /* Sources */,
 				B10000010000000000000001 /* Frameworks */,
+				R10000010000000000000001 /* Resources */,
 				E10000010000000000000001 /* Embed Watch Content */,
 			);
 			buildRules = (
@@ -235,6 +240,7 @@
 			buildPhases = (
 				S20000010000000000000001 /* Sources */,
 				B20000010000000000000001 /* Frameworks */,
+				R20000010000000000000001 /* Resources */,
 				E20000010000000000000001 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -301,6 +307,25 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		R10000010000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A100000B0000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		R20000010000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A20000060000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		S10000010000000000000001 /* Sources */ = {
@@ -395,6 +420,7 @@
 		X10000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
@@ -419,6 +445,7 @@
 		X10000020000000000000001 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
@@ -444,6 +471,7 @@
 		X20000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
@@ -468,6 +496,7 @@
 		X20000020000000000000001 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_AppGroupIdentifier = "$(APP_GROUP_IDENTIFIER)";
