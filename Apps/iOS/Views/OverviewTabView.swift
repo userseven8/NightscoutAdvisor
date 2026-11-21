@@ -22,7 +22,7 @@ struct OverviewTabView: View {
                         HStack(spacing: 0) {
                             SimpleMetricColumn(
                                 label: "In Range",
-                                value: String(format: "%.0f%%", stats.tirPercent),
+                                value: String(format: "%.1f%%", stats.tirPercent),
                                 valueColor: stats.tirPercent >= 70.0 ? Color.green : Color.primary
                             )
                             SimpleMetricColumn(

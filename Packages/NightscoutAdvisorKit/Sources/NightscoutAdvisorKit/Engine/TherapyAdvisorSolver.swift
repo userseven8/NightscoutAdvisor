@@ -348,14 +348,8 @@ public enum TherapyAdvisorSolver {
                 recVal = roundISFToGrid(geomVal)
                 let empMin = usedEps.min() ?? recVal
                 let empMax = usedEps.max() ?? recVal
-                if usedEps.count >= 2 {
-                    let (bLo, bHi) = logBootstrapCI(usedEps, seed: 100 + idx)
-                    ciLo = min(empMin, bLo)
-                    ciHi = max(empMax, bHi)
-                } else {
-                    ciLo = min(empMin, recVal * 0.85)
-                    ciHi = max(empMax, recVal * 1.15)
-                }
+                ciLo = empMin.rounded()
+                ciHi = empMax.rounded()
             } else {
                 geomVal = seg.value
                 recVal = seg.value
@@ -431,9 +425,9 @@ public enum TherapyAdvisorSolver {
                 solvedBasalByBlock[bIdx] = rawRec
 
                 let status: SyncStatus
-                if abs(seg.value - rawRec) < max(0.03, 0.6 * qStep) {
+                if abs(seg.value - rawRec) < 0.01 {
                     status = .inSync
-                } else if seg.value >= ciLo && seg.value <= ciHi {
+                } else if seg.value >= (ciLo - 0.005) && seg.value <= (ciHi + 0.005) {
                     status = .inConfidenceInterval
                 } else {
                     status = .adjustRecommended
@@ -842,7 +836,7 @@ public enum TherapyAdvisorSolver {
         // MARK: - Control Stability & Glycemic Stats
 
         let stability = computeStabilityAudit(
-            activeISF: userISFBlocks[0].value,
+            recommendedISF: recISF,
             empiricalISF: geomISF,
             peakMinutes: effectiveConfig.peakMinutes,
             diaMinutes: effectiveConfig.diaMinutes,
@@ -928,45 +922,52 @@ public enum TherapyAdvisorSolver {
     }
 
     private static func computeStabilityAudit(
-        activeISF: Double,
+        recommendedISF: Double,
         empiricalISF: Double,
         peakMinutes: Double,
         diaMinutes: Double,
         sensorJitterMgdL: Double,
         pumpStepImpactMgdL: Double
     ) -> ControlStabilityAudit {
-        let tauHours = max(0.5, peakMinutes / 60.0)
-        let horizonHours = max(3.0, diaMinutes / 60.0)
-        let kPlant = max(10.0, empiricalISF)
-        let kController = 1.0 / max(10.0, activeISF)
-        let loopGain = (kPlant * kController) * (tauHours / (horizonHours * 0.52))
-        let naturalWn = sqrt(max(0.05, loopGain)) / tauHours
-        let dampingZeta = 1.0 / (2.0 * sqrt(max(0.05, loopGain)))
-        let critISF = empiricalISF * (tauHours / (horizonHours * 0.52)) * 4.0 * 0.45
-        let gainMargin = max(0.5, activeISF / max(1.0, critISF))
-        let phaseMargin = min(165.0, max(15.0, 95.0 * dampingZeta + 35.0))
+        let tauDelay = max(0.5, peakMinutes / 60.0)
+        let tauDIA = max(3.0, diaMinutes / 60.0)
+        let isfTrue = max(10.0, empiricalISF)
+        let recISF = max(10.0, recommendedISF)
+
+        let aCoeff = tauDIA * tauDelay
+        let bCoeff = tauDIA + tauDelay
+        let cCoeff = 1.0 + (isfTrue / recISF)
+
+        let dampingRatio = bCoeff / (2.0 * sqrt(aCoeff * cCoeff))
+        let discrim = bCoeff * bCoeff - 4.0 * aCoeff * cCoeff
 
         let poleSummary: String
-        if dampingZeta >= 1.0 {
-            let rad = sqrt(max(0.0, dampingZeta * dampingZeta - 1.0))
-            let p1 = -naturalWn * (dampingZeta - rad)
-            let p2 = -naturalWn * (dampingZeta + rad)
+        if discrim >= 0 {
+            let p1 = (-bCoeff + sqrt(discrim)) / (2.0 * aCoeff)
+            let p2 = (-bCoeff - sqrt(discrim)) / (2.0 * aCoeff)
             poleSummary = String(format: "Real [%.2f, %.2f] h⁻¹ (Zero Oscillation)", p1, p2)
         } else {
-            let realPart = -dampingZeta * naturalWn
-            let imagPart = naturalWn * sqrt(max(0.0, 1.0 - dampingZeta * dampingZeta))
-            poleSummary = String(format: "Complex %.2f ± %.2fi h⁻¹", realPart, imagPart)
+            let realP = -bCoeff / (2.0 * aCoeff)
+            let imagP = sqrt(-discrim) / (2.0 * aCoeff)
+            poleSummary = String(format: "Complex [%.2f ± %.2fj] h⁻¹", realP, imagP)
         }
 
+        let cCrit = (bCoeff * bCoeff) / (4.0 * aCoeff)
+        let critISFBound = isfTrue / max(0.05, cCrit - 1.0)
+        let gainMargin = critISFBound > 0 ? (recISF / critISFBound) : 1.2
+        let omegaC = 0.12
+        let phaseAtC = -atan(omegaC * tauDIA) - omegaC * tauDelay
+        let phaseMarginDeg = 180.0 + (phaseAtC * 180.0 / .pi)
+
         return ControlStabilityAudit(
-            dampingRatioZeta: dampingZeta,
+            dampingRatioZeta: dampingRatio,
             poleSummary: poleSummary,
-            criticalISFBoundMgdLPerU: critISF,
+            criticalISFBoundMgdLPerU: critISFBound,
             gainMarginMultiplier: gainMargin,
-            phaseMarginDegrees: phaseMargin,
+            phaseMarginDegrees: phaseMarginDeg,
             sensorJitterMgdL: sensorJitterMgdL,
             pumpStepImpactMgdL: pumpStepImpactMgdL,
-            isOverdampedStable: dampingZeta >= 0.85
+            isOverdampedStable: dampingRatio >= 0.85
         )
     }
 

@@ -9,11 +9,11 @@ public final class AdvisorStore: @unchecked Sendable {
     private let containerURL: URL?
 
     private let settingsKey = "therapy_settings_config_v2"
-    private let reportCacheKey = "cached_advisor_report_v3"
-    private let watchSummaryKey = "cached_watch_summary_v3"
+    private let reportCacheKey = "cached_advisor_report_v4"
+    private let watchSummaryKey = "cached_watch_summary_v4"
     private let sharedCredsKey = "shared_nightscout_creds_v2"
 
-    private let watchSummaryFilename = "watch_summary_v3.json"
+    private let watchSummaryFilename = "watch_summary_v4.json"
     private let sharedCredsFilename = "shared_creds_v2.json"
 
     private let keychainService = "org.nightscout.NightscoutAdvisor.credentials"

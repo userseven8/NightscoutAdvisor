@@ -163,7 +163,17 @@ public struct NightscoutClient: Sendable {
             let unitsStr = (activeDict["units"] as? String) ?? (doc["units"] as? String)
             let unit = BGUnit.fromNightscout(unitsStr)
             let rawTZ = (activeDict["timezone"] as? String) ?? TimeZone.current.identifier
-            let tzID = rawTZ.hasPrefix("ETC/") ? "Etc/" + rawTZ.dropFirst(4) : rawTZ
+            let normTZ = rawTZ.hasPrefix("ETC/") ? "Etc/" + rawTZ.dropFirst(4) : rawTZ
+            let tzID: String = {
+                // Loop uploads fixed POSIX "ETC/GMT-X" strings instead of geographic IANA zones (losing DST transitions).
+                // When the fixed offset matches the device's current IANA timezone offset, use the device's DST-aware IANA zone.
+                if normTZ.uppercased().hasPrefix("ETC/GMT"),
+                   let etcZone = TimeZone(identifier: normTZ),
+                   etcZone.secondsFromGMT() == TimeZone.current.secondsFromGMT() {
+                    return TimeZone.current.identifier
+                }
+                return normTZ
+            }()
 
             let effTS: TimeInterval = {
                 if let cAt = doc["created_at"] as? String, let ts = parseISOTimestamp(cAt) {
