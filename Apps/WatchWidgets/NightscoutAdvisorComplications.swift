@@ -29,6 +29,10 @@ struct AdvisorComplicationEntryView: View {
     @Environment(\.widgetFamily) var family
     let entry: AdvisorComplicationEntry
 
+    private var allGood: Bool {
+        entry.summary.alignedSections == 4
+    }
+
     var body: some View {
         switch family {
         case .accessoryCircular:
@@ -43,13 +47,13 @@ struct AdvisorComplicationEntryView: View {
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text("Nightscout Advisor")
+                    Text("NS Advisor")
                         .font(.caption2.weight(.bold))
                     Spacer()
-                    Text("\(entry.summary.alignedSections)/4 CI")
+                    Text(allGood ? "✓ OK" : "Review")
                         .font(.caption2.weight(.semibold))
                 }
-                Text(String(format: "7d TIR %.0f%% • TBR %.1f%%", entry.summary.tir7d, entry.summary.tbr7d))
+                Text(String(format: "TIR %.0f%% • Low %.1f%%", entry.summary.tir7d, entry.summary.tbr7d))
                     .font(.caption.monospacedDigit().weight(.semibold))
                 Text("Target \(entry.summary.headlineTarget)")
                     .font(.caption2)
@@ -57,7 +61,7 @@ struct AdvisorComplicationEntryView: View {
             }
 
         case .accessoryInline:
-            Text(String(format: "TIR %.0f%% • %d/4 Sync", entry.summary.tir7d, entry.summary.alignedSections))
+            Text(String(format: "TIR %.0f%% • %@", entry.summary.tir7d, allGood ? "OK" : "Review"))
 
         default:
             Text(String(format: "%.0f%%", entry.summary.tir7d))
@@ -74,8 +78,8 @@ struct NightscoutAdvisorComplicationsBundle: Widget {
             AdvisorComplicationEntryView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName("Nightscout TIR & Sync")
-        .description("Rolling 7-day Time in Range and 4-Stage closed-loop schedule sync status.")
+        .configurationDisplayName("NS Advisor")
+        .description("7-day Time in Range and therapy setting status.")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryRectangular,

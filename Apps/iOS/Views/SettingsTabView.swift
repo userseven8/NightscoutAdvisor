@@ -2,32 +2,25 @@ import NightscoutAdvisorKit
 import SwiftUI
 
 struct SettingsTabView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: AdvisorViewModel
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
+                Section("Nightscout") {
                     TextField("Nightscout URL (https://…)", text: $viewModel.credentials.baseURLString)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
-                    SecureField("Read-Only API Token (Optional)", text: $viewModel.credentials.apiToken)
+                    SecureField("API Token (Optional)", text: $viewModel.credentials.apiToken)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-
-                    SecureField("API Secret (Optional)", text: $viewModel.credentials.apiSecretPlaintext)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("Nightscout Endpoint")
-                } footer: {
-                    Text("Stored locally in iOS Keychain and synced securely to your paired Apple Watch.")
                 }
 
-                Section("Insulin & Pump Hardware") {
-                    Picker("Insulin Curve", selection: $viewModel.config.insulinPreset) {
+                Section("Therapy Setup") {
+                    Picker("Insulin", selection: $viewModel.config.insulinPreset) {
                         ForEach(InsulinPreset.allCases) { preset in
                             Text(preset.title).tag(preset)
                         }
@@ -35,47 +28,55 @@ struct SettingsTabView: View {
 
                     if viewModel.config.insulinPreset == .custom {
                         Stepper(
-                            "Peak Activity: \(Int(viewModel.config.customPeakMinutes)) min",
+                            "Peak: \(Int(viewModel.config.customPeakMinutes)) min",
                             value: $viewModel.config.customPeakMinutes,
                             in: 35...110,
                             step: 5
                         )
                         Stepper(
-                            "Insulin DIA: \(Int(viewModel.config.customDIAMinutes)) min",
+                            "DIA: \(Int(viewModel.config.customDIAMinutes)) min",
                             value: $viewModel.config.customDIAMinutes,
                             in: 240...480,
                             step: 30
                         )
                     }
 
-                    Picker("Pump Bolus Step", selection: $viewModel.config.pumpQuantum) {
+                    Picker("Pump Step", selection: $viewModel.config.pumpQuantum) {
                         ForEach(PumpQuantum.allCases) { q in
                             Text(q.title).tag(q)
                         }
                     }
 
-                    Picker("Closed-Loop Mode", selection: $viewModel.config.dosingMode) {
+                    Picker("Loop Mode", selection: $viewModel.config.dosingMode) {
                         ForEach(ClosedLoopDosingMode.allCases) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }
 
-                    Picker("Rolling Window", selection: $viewModel.config.rollingDays) {
+                    Picker("History Window", selection: $viewModel.config.rollingDays) {
                         Text("14 Days").tag(14)
-                        Text("30 Days (Recommended)").tag(30)
+                        Text("30 Days").tag(30)
                         Text("45 Days").tag(45)
                     }
 
-                    Picker("Display Units", selection: $viewModel.config.preferredUnitOverride) {
-                        Text("Auto (From Nightscout)").tag(BGUnit?.none)
+                    Picker("Units", selection: $viewModel.config.preferredUnitOverride) {
+                        Text("Auto").tag(BGUnit?.none)
                         Text("mg/dL").tag(BGUnit?.some(.mgdL))
                         Text("mmol/L").tag(BGUnit?.some(.mmolL))
                     }
                 }
 
+                if let report = viewModel.report {
+                    Section {
+                        NavigationLink("How Calculations Work") {
+                            MethodologyTabView(report: report)
+                        }
+                    }
+                }
+
                 if let err = viewModel.errorMessage {
                     Section {
-                        Label(err, systemImage: "exclamationmark.triangle.fill")
+                        Label(err, systemImage: "exclamationmark.circle.fill")
                             .font(.footnote)
                             .foregroundStyle(.red)
                     }
@@ -83,21 +84,34 @@ struct SettingsTabView: View {
 
                 Section {
                     Button {
-                        Task { await viewModel.saveSettingsAndRefresh() }
+                        Task {
+                            await viewModel.saveSettingsAndRefresh()
+                            if viewModel.errorMessage == nil {
+                                dismiss()
+                            }
+                        }
                     } label: {
-                        Label("Save & Re-Solve from Nightscout", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.headline)
+                        HStack {
+                            Spacer()
+                            if viewModel.isLoading {
+                                ProgressView()
+                            } else {
+                                Text("Save & Refresh")
+                                    .font(.headline)
+                            }
+                            Spacer()
+                        }
                     }
                     .disabled(viewModel.isLoading)
-
-                    Button {
-                        Task { await viewModel.loadDemoTelemetry(units: viewModel.config.preferredUnitOverride ?? .mgdL) }
-                    } label: {
-                        Label("Load Synthetic 30-Day Demo Data", systemImage: "sparkles")
-                    }
                 }
             }
-            .navigationTitle("Nightscout & Physics")
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") { dismiss() }
+                }
+            }
         }
     }
 }

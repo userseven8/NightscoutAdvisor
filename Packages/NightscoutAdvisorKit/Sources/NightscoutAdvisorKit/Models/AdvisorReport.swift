@@ -194,8 +194,33 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
         return count
     }
 
+    public var totalAdjustmentsCount: Int {
+        let a1 = isfSchedule.filter { !$0.status.isAlignedOrInCI }.count
+        let a2 = basalSchedule.filter { !$0.status.isAlignedOrInCI }.count
+        let a3 = carbRatioSchedule.filter { !$0.status.isAlignedOrInCI }.count
+        let a4 = targetSchedule.filter { !$0.status.isAlignedOrInCI }.count
+        return a1 + a2 + a3 + a4
+    }
+
     public func makeWatchSummary() -> WatchAdvisorSummary {
-        WatchAdvisorSummary(
+        let firstBasalChange = basalSchedule.first { !$0.status.isAlignedOrInCI }
+        let firstCRChange = carbRatioSchedule.first { !$0.status.isAlignedOrInCI }
+
+        let basalText: String
+        if let b = firstBasalChange {
+            basalText = String(format: "%@ → %.2f", b.timeString, b.recommendedUnitsPerHour)
+        } else {
+            basalText = "In Range"
+        }
+
+        let crText: String
+        if let c = firstCRChange {
+            crText = String(format: "%@ → 1:%.1f", c.timeString, c.recommendedGramsPerUnit)
+        } else {
+            crText = "In Range"
+        }
+
+        return WatchAdvisorSummary(
             generatedAt: generatedAt,
             displayUnit: displayUnit,
             tir24h: stats24h.tirPercent,
@@ -208,9 +233,11 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
             basalAligned: basalSchedule.allSatisfy(\.status.isAlignedOrInCI),
             crAligned: carbRatioSchedule.allSatisfy(\.status.isAlignedOrInCI),
             targetAligned: targetSchedule.allSatisfy(\.status.isAlignedOrInCI),
-            headlineISF: "\(displayUnit.formatISF(globalISF.recommendedMgdLPerU, includeUnit: true))",
+            headlineISF: displayUnit.formatISF(globalISF.recommendedMgdLPerU, includeUnit: false),
+            headlineBasal: basalText,
+            headlineCR: crText,
             headlineTarget: targetSchedule.first.map {
-                "\(displayUnit.formatBG($0.recommendedLowMgdL))–\(displayUnit.formatBG($0.recommendedHighMgdL)) \(displayUnit.rawValue)"
+                "\(displayUnit.formatBG($0.recommendedLowMgdL))–\(displayUnit.formatBG($0.recommendedHighMgdL))"
             } ?? "—"
         )
     }
@@ -230,6 +257,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
     public let crAligned: Bool
     public let targetAligned: Bool
     public let headlineISF: String
+    public let headlineBasal: String?
+    public let headlineCR: String?
     public let headlineTarget: String
 
     public init(
@@ -246,6 +275,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
         crAligned: Bool,
         targetAligned: Bool,
         headlineISF: String,
+        headlineBasal: String? = nil,
+        headlineCR: String? = nil,
         headlineTarget: String
     ) {
         self.generatedAt = generatedAt
@@ -261,6 +292,8 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
         self.crAligned = crAligned
         self.targetAligned = targetAligned
         self.headlineISF = headlineISF
+        self.headlineBasal = headlineBasal
+        self.headlineCR = headlineCR
         self.headlineTarget = headlineTarget
     }
 
@@ -278,8 +311,10 @@ public struct WatchAdvisorSummary: Codable, Equatable, Sendable {
             basalAligned: true,
             crAligned: true,
             targetAligned: true,
-            headlineISF: "125 mg/dL/U",
-            headlineTarget: "105–120 mg/dL"
+            headlineISF: "125",
+            headlineBasal: "In Range",
+            headlineCR: "In Range",
+            headlineTarget: "105–120"
         )
     }
 }
