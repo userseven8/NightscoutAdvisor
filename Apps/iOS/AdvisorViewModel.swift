@@ -10,6 +10,7 @@ final class AdvisorViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var isDemoMode: Bool = false
+    @Published var hasAcceptedDIYDisclaimer: Bool
 
     private let store = AdvisorStore.shared
     private let client = NightscoutClient()
@@ -22,9 +23,11 @@ final class AdvisorViewModel: ObservableObject {
         self.config = savedConfig
         self.report = cached
         self.isDemoMode = cached?.sourceURL.hasPrefix("demo://") == true
+        self.hasAcceptedDIYDisclaimer = AdvisorStore.shared.hasAcknowledgedDIYDisclaimer()
         WatchSyncBridge.shared.activate()
 
         if ProcessInfo.processInfo.arguments.contains("--demo-screenshots") {
+            self.hasAcceptedDIYDisclaimer = true
             let demoBundle = DemoTelemetryGenerator.makeSyntheticBundle(days: savedConfig.rollingDays, units: .mgdL)
             if let demoReport = try? TherapyAdvisorSolver.solve(bundle: demoBundle, config: savedConfig) {
                 self.report = demoReport
@@ -33,11 +36,19 @@ final class AdvisorViewModel: ObservableObject {
             return
         }
 
-        if savedCreds.normalizedBaseURL != nil {
+        if self.hasAcceptedDIYDisclaimer, savedCreds.normalizedBaseURL != nil {
             let isStale = cached.map { Date().timeIntervalSince($0.generatedAt) > 1800 } ?? true
             if isStale {
                 Task { await refreshFromNightscout() }
             }
+        }
+    }
+
+    func acceptDIYDisclaimer() {
+        store.setDIYDisclaimerAcknowledged(true)
+        hasAcceptedDIYDisclaimer = true
+        if credentials.normalizedBaseURL != nil {
+            Task { await refreshFromNightscout() }
         }
     }
 

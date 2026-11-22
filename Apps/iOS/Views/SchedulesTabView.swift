@@ -174,15 +174,20 @@ struct ScheduleDetailSheet: View {
             List {
                 Section {
                     LabeledContent("Window", value: detail.timeWindow)
-                    LabeledContent("Current Setting", value: detail.currentValue)
-                    LabeledContent("Suggested", value: detail.suggestedValue)
-                    LabeledContent("95% Range", value: detail.confidenceRange)
+                    LabeledContent("Active Profile", value: detail.currentValue)
+                    LabeledContent("Empirical Estimate", value: detail.suggestedValue)
+                    LabeledContent("95% Confidence Interval", value: detail.confidenceRange)
+                    LabeledContent("Alignment", value: detail.status.badgeTitle)
                 }
 
-                Section("Summary") {
+                Section {
                     Text(detail.details)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                } header: {
+                    Text("Statistical Derivation")
+                } footer: {
+                    Text("Informational retrospective telemetry summary (#WeAreNotWaiting). Never modify pump or closed-loop parameters without clinician review.")
                 }
             }
             .navigationTitle(detail.category)

@@ -7,7 +7,11 @@ struct RootContentView: View {
 
     var body: some View {
         Group {
-            if let report = viewModel.report {
+            if !viewModel.hasAcceptedDIYDisclaimer {
+                DIYSafetyAcknowledgmentView {
+                    viewModel.acceptDIYDisclaimer()
+                }
+            } else if let report = viewModel.report {
                 OverviewTabView(
                     viewModel: viewModel,
                     report: report,
@@ -21,7 +25,7 @@ struct RootContentView: View {
             }
         }
         .overlay {
-            if viewModel.isLoading && viewModel.report == nil {
+            if viewModel.isLoading && viewModel.report == nil && viewModel.hasAcceptedDIYDisclaimer {
                 ZStack {
                     Color.black.opacity(0.2).ignoresSafeArea()
                     VStack(spacing: 12) {
@@ -35,6 +39,109 @@ struct RootContentView: View {
                 }
             }
         }
+    }
+}
+
+struct DIYSafetyAcknowledgmentView: View {
+    var isReadOnlyReview: Bool = false
+    var onAccept: (() -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmedUnderstanding = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Experimental Open-Source Code", systemImage: "exclamationmark.triangle.fill")
+                            .font(.headline)
+                            .foregroundStyle(.orange)
+                        Text("Nightscout Advisor is an open-source #WeAreNotWaiting community research project. It has NOT been reviewed, cleared, or approved by the FDA, EMA, or any regulatory authority, and is provided \"AS IS\" without warranty of any kind.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Important Safety Boundaries") {
+                    DIYNoticeRow(
+                        icon: "chart.xyaxis.line",
+                        title: "Retrospective Statistics Only — Not Medical Advice",
+                        detail: "All outputs are mathematical summaries of historical Nightscout logs. They cannot detect sensor compression lows, infusion site issues, illness, exercise, hormones, or unlogged meals."
+                    )
+                    DIYNoticeRow(
+                        icon: "bolt.heart.fill",
+                        title: "Insulin Parameter Changes Carry Severe Risk",
+                        detail: "Incorrect basal rates, insulin sensitivity factors (ISF), carb ratios, or target ranges can cause severe hypoglycemia, diabetic ketoacidosis (DKA), coma, or death."
+                    )
+                    DIYNoticeRow(
+                        icon: "stethoscope",
+                        title: "Independent Clinician Review Required",
+                        detail: "Never change insulin pump or closed-loop settings based solely on this software. Always evaluate retrospective data together with a qualified endocrinologist or diabetes care clinician."
+                    )
+                    DIYNoticeRow(
+                        icon: "person.badge.shield.checkmark.fill",
+                        title: "DIY Self-Build & Full User Responsibility",
+                        detail: "Do not distribute compiled builds to others. By building and running this source code, you assume sole responsibility for its operation and verify all clinical decisions independently."
+                    )
+                }
+
+                if !isReadOnlyReview {
+                    Section {
+                        Toggle(isOn: $confirmedUnderstanding) {
+                            Text("I understand this is unvalidated open-source research software, not medical advice, and I accept full responsibility.")
+                                .font(.footnote.weight(.medium))
+                        }
+
+                        Button {
+                            onAccept?()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("I Understand & Continue")
+                                    .font(.headline)
+                                Spacer()
+                            }
+                        }
+                        .disabled(!confirmedUnderstanding)
+                    }
+                }
+            }
+            .navigationTitle("Safety & Disclaimer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if isReadOnlyReview {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct DIYNoticeRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 22)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
     }
 }
 
@@ -53,7 +160,7 @@ struct OnboardingWelcomeView: View {
                 } header: {
                     Text("Connect Nightscout")
                 } footer: {
-                    Text("Analyzes your glucose and insulin history privately on your iPhone.")
+                    Text("Reads historical glucose and treatment telemetry privately on your iPhone (read-only).")
                 }
 
                 Section {

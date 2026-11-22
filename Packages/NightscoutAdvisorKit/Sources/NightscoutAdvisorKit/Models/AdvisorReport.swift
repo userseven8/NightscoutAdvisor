@@ -8,9 +8,9 @@ public enum SyncStatus: String, Codable, Sendable {
 
     public var badgeTitle: String {
         switch self {
-        case .inSync: return "✓ In Sync"
-        case .inConfidenceInterval: return "✓ In 95% CI"
-        case .adjustRecommended: return "Adjust Recommended"
+        case .inSync: return "✓ Matches Profile"
+        case .inConfidenceInterval: return "✓ Within 95% CI"
+        case .adjustRecommended: return "Outside 95% CI"
         case .insufficientData: return "Profile Anchor"
         }
     }

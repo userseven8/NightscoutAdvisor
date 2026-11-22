@@ -92,7 +92,7 @@ struct AdvisorComplicationEntryView: View {
                 HStack(spacing: 4) {
                     Image(systemName: count == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
                         .foregroundStyle(count == 0 ? Color.green : Color.orange)
-                    Text(count == 0 ? "All Good" : "\(count) Update\(count == 1 ? "" : "s")")
+                    Text(count == 0 ? "Within 95% CI" : "\(count) Outside CI")
                         .font(.caption2.weight(.bold))
                 }
 
@@ -184,7 +184,7 @@ struct NightscoutAdvisorComplicationsBundle: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("NS Advisor")
-        .description("Shows a clean ✓ when settings match, or the count of suggested adjustments.")
+        .description("Displays ✓ when active profile schedules sit within the 95% CI, or the count of windows outside CI.")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryRectangular,

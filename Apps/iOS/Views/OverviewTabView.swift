@@ -49,18 +49,20 @@ struct OverviewTabView: View {
                     .padding(.vertical, 6)
                 }
 
-                // 2. Therapy Settings Verdict Banner
+                // 2. Retrospective Statistical Alignment Summary
                 Section {
                     HStack(spacing: 10) {
                         let changes = report.totalAdjustmentsCount
                         Image(systemName: changes == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
                             .font(.title3)
                             .foregroundStyle(changes == 0 ? Color.green : Color.orange)
-                        Text(changes == 0 ? "All Settings Look Good" : "\(changes) Adjustment\(changes == 1 ? "" : "s") Suggested")
+                        Text(changes == 0 ? "All Schedules Within 95% CI" : "\(changes) Window\(changes == 1 ? "" : "s") Outside 95% CI")
                             .font(.subheadline.weight(.semibold))
                         Spacer()
                     }
                     .padding(.vertical, 2)
+                } footer: {
+                    Text("Retrospective statistical estimates only — not medical advice. Always review therapy settings with a qualified clinician.")
                 }
 
                 // 3. Clean Single-Line Therapy Schedules

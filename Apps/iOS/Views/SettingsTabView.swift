@@ -66,11 +66,14 @@ struct SettingsTabView: View {
                     }
                 }
 
-                if let report = viewModel.report {
-                    Section {
+                Section("Documentation & Safety") {
+                    if let report = viewModel.report {
                         NavigationLink("How Calculations Work") {
                             MethodologyTabView(report: report)
                         }
+                    }
+                    NavigationLink("Safety & Open-Source Disclaimer") {
+                        DIYSafetyAcknowledgmentView(isReadOnlyReview: true)
                     }
                 }
 

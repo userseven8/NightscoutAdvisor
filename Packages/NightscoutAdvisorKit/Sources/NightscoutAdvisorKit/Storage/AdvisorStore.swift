@@ -12,6 +12,7 @@ public final class AdvisorStore: @unchecked Sendable {
     private let reportCacheKey = "cached_advisor_report_v4"
     private let watchSummaryKey = "cached_watch_summary_v4"
     private let sharedCredsKey = "shared_nightscout_creds_v2"
+    private let diyDisclaimerAckKey = "diy_safety_disclaimer_ack_v1"
 
     private let watchSummaryFilename = "watch_summary_v4.json"
     private let sharedCredsFilename = "shared_creds_v2.json"
@@ -97,6 +98,16 @@ public final class AdvisorStore: @unchecked Sendable {
             return creds
         }
         return NightscoutCredentials()
+    }
+
+    // MARK: - DIY Safety & Responsibility Acknowledgment
+
+    public func hasAcknowledgedDIYDisclaimer() -> Bool {
+        defaults.bool(forKey: diyDisclaimerAckKey)
+    }
+
+    public func setDIYDisclaimerAcknowledged(_ acknowledged: Bool = true) {
+        defaults.set(acknowledged, forKey: diyDisclaimerAckKey)
     }
 
     // MARK: - Therapy Settings Config

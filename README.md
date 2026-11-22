@@ -4,7 +4,13 @@
 
 # Nightscout Advisor (`NS Advisor` for iOS & watchOS)
 
-**First-Principles Closed-Loop Telemetry & Therapy Schedule Advisor for Nightscout.**
+> [!CAUTION]
+> **Experimental `#WeAreNotWaiting` Open-Source Research Code — Not a Medical Device & Not Medical Advice**
+> * Nightscout Advisor has **not** been reviewed, cleared, or approved by the FDA, EMA, or any regulatory authority, and is provided **"AS IS" without warranty** ([MIT License](LICENSE) • [Full Safety Disclaimer](DISCLAIMER.md)).
+> * All values shown are **retrospective statistical summaries** of historical Nightscout logs. Incorrect insulin settings can cause **severe hypoglycemia, DKA, coma, or death**—**never** alter pump or closed-loop parameters without independent review by a qualified endocrinologist/clinician.
+> * **Source-code self-build only:** Just like DIY Loop, Trio, and AndroidAPS, you must compile and sign this code yourself for your own personal use. **Do not** distribute pre-compiled `.ipa` binaries or shared TestFlight invites to others.
+
+**First-Principles Closed-Loop Telemetry & Retrospective Schedule Analysis for Nightscout.**
 
 Nightscout Advisor connects directly from your iPhone and Apple Watch to any **Nightscout** instance (`mg/dL` or `mmol/L`)—compatible across automated insulin delivery systems (`Trio`, `AndroidAPS`, `iAPS`, `OpenAPS`, `Loop`, and other Nightscout-connected controllers)—and runs a coupled 4-stage insulin-kinetics & stochastic control solver **100% on-device** with zero cloud intermediaries, zero data collection, and zero heuristic block hacks.
 
@@ -51,9 +57,11 @@ Nightscout Advisor solves all four closed-loop therapy schedules directly from y
 
 ---
 
-## Installation Option A: GitHub Browser Build $\to$ TestFlight
+## Personal DIY Build Option A: GitHub Browser Build $\to$ Your Own TestFlight
 
-If you already build open-source Nightscout / DIY AID apps via GitHub Actions, you can reuse the standard 6 GitHub Secrets and `Match-Certificates` repository:
+*(For your own personal Apple Developer account only — never distribute compiled builds to others.)*
+
+If you already build open-source Nightscout / DIY AID apps for yourself via GitHub Actions, you can reuse your own 6 GitHub Secrets and private `Match-Certificates` repository:
 
 1. **Fork** this repository on GitHub.
 2. Go to your fork's **Settings $\to$ Secrets and variables $\to$ Actions** and add:
@@ -68,11 +76,11 @@ If you already build open-source Nightscout / DIY AID apps via GitHub Actions, y
 
 ---
 
-## Installation Option B: Build Directly with Xcode
+## Personal DIY Build Option B: Build Directly with Xcode
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/<your-username>/NightscoutAdvisor.git
+   git clone https://github.com/userseven8/NightscoutAdvisor.git
    cd NightscoutAdvisor
    ```
 2. Create an untracked local signing config at `Config/NightscoutAdvisorConfigOverride.xcconfig`:
@@ -95,6 +103,8 @@ swift test
 
 ---
 
-## Clinical Disclaimer (`#WeAreNotWaiting`)
+## Safety Disclaimer & License (`#WeAreNotWaiting`)
 
-Nightscout Advisor is an open-source retrospective telemetry and educational research tool. It is **not** FDA-cleared or CE-marked medical device software and does **not** automatically modify pump settings or deliver insulin. Always review therapy profile adjustments with a qualified endocrinology clinician.
+Nightscout Advisor is free, non-commercial open-source research code distributed under the [MIT License](LICENSE). It is **not** FDA-cleared or CE-marked medical device software, does **not** connect to or modify any insulin pump, and provides retrospective statistical summaries for educational discussion only.
+
+Please read the complete **[Safety Disclaimer & Assumption of Risk (`DISCLAIMER.md`)](DISCLAIMER.md)** before building or using this project. Always review any therapy profile decisions with a qualified endocrinology clinician.

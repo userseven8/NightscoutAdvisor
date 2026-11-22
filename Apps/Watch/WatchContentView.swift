@@ -15,12 +15,12 @@ struct WatchContentView: View {
                 let count = sum.effectiveAdjustmentsCount
                 ScrollView {
                     VStack(spacing: 8) {
-                        // 1. Advisor Status Headline
+                        // 1. Statistical Alignment Headline
                         HStack(spacing: 6) {
                             Image(systemName: count == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
                                 .font(.callout)
                                 .foregroundStyle(count == 0 ? Color.green : Color.orange)
-                            Text(count == 0 ? "All In Sync" : "\(count) Update\(count == 1 ? "" : "s")")
+                            Text(count == 0 ? "Within 95% CI" : "\(count) Outside CI")
                                 .font(.footnote.weight(.bold))
                             Spacer()
                         }
