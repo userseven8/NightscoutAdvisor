@@ -33,21 +33,21 @@ Nightscout Advisor solves all four closed-loop therapy schedules directly from y
 * Reconstructs continuous historical scheduled basals, truncated non-overlapping temp basals, and boluses across up to 200 historical Nightscout profile versions.
 * Convolves delivery with exact exponential subcutaneous insulin kinetics (`Lyumjev / Fiasp` peak `55 min` or `Humalog / Novolog / Apidra` peak `65–75 min`):
 
-$$
-I_{\mathrm{abs}}(t_1, t_2) = \mathrm{IOB}(t_1) + I_{\mathrm{deliv}}(t_1, t_2) - \mathrm{IOB}(t_2)
-$$
+<p align="center">
+  <em>I</em><sub>abs</sub>(<em>t</em><sub>1</sub>, <em>t</em><sub>2</sub>) = IOB(<em>t</em><sub>1</sub>) + <em>I</em><sub>deliv</sub>(<em>t</em><sub>1</sub>, <em>t</em><sub>2</sub>) − IOB(<em>t</em><sub>2</sub>)
+</p>
 
-* Computes the log-space Maximum Likelihood Estimator (geometric mean) across carb-free correction episodes rather than dose-weighted pooling ($\sum \Delta\mathrm{BG} / \sum I$), preventing insulin-resistant high-dose nights from biasing ISF dangerously low.
+* Computes the log-space Maximum Likelihood Estimator (geometric mean) across carb-free correction episodes rather than dose-weighted pooling (∑ ΔBG / ∑ <em>I</em>), preventing insulin-resistant high-dose nights from biasing ISF dangerously low.
 
-### Stage 2 — ATTD Closed-Loop Basal Quantile ($\tau^* = 4/29 \approx 0.138$, or 13.8%)
+### Stage 2 — ATTD Closed-Loop Basal Quantile (τ* = 4/29 ≈ 13.8%)
 * In Automatic Bolus / SMB controllers, actuation is physically one-sided: the controller can add micro-boluses upward on higher-demand nights, but cannot extract subcutaneous insulin infused an hour earlier.
 * Applies the Koenker–Bassett / Newsvendor quantile derived directly from the ATTD consensus limits (4% allowable TBR vs. 25% allowable TAR) uniformly across your Nightscout basal schedule.
 
-### Stage 3 — Postprandial Mass-Balance & Gauss–Markov WLS ($w_i = 1/C_i$)
-* Clusters multi-part meals, accounts for rescue carbs, integrates piecewise scheduled basal across schedule boundaries, evaluates 3.5-hour postprandial settling relative to active targets (`profile.json` + `Temporary Override` / `Temporary Target` events), and applies proportional shot-noise Weighted Least Squares ($\mathrm{CR} = \sum C_i / \sum I_i$) with Student-*t* 95% CIs.
+### Stage 3 — Postprandial Mass-Balance & Gauss–Markov WLS (wᵢ = 1 / Cᵢ)
+* Clusters multi-part meals, accounts for rescue carbs, integrates piecewise scheduled basal across schedule boundaries, evaluates 3.5-hour postprandial settling relative to active targets (`profile.json` + `Temporary Override` / `Temporary Target` events), and applies proportional shot-noise Weighted Least Squares (CR = ∑ <em>C</em><sub><em>i</em></sub> / ∑ <em>I</em><sub><em>i</em></sub>) with Student-<em>t</em> 95% CIs.
 
 ### Stage 4 — Optimal Correction Range (ATTD Safety Floor + Kovatchev BGRI + Deadband Physics)
-* Isolates empirical closed-loop tracking error $\varepsilon(t) = \mathrm{BG}(t) - T_{\mathrm{active}}(t)$, enforces ATTD hypoglycemia tail floors (≤ 4% `<70 mg/dL`, ≤ 1% `<54 mg/dL`), minimizes Kovatchev's symmetric Blood Glucose Risk Index, sizes deadband width from empirical 5-minute CGM MAD jitter and pump bolus quantum (`0.05 U` / `0.025 U` / `0.01 U`), and computes 95% CIs via **calendar day-block bootstrap**.
+* Isolates empirical closed-loop tracking error <em>ε</em>(<em>t</em>) = BG(<em>t</em>) − <em>T</em><sub>active</sub>(<em>t</em>), enforces ATTD hypoglycemia tail floors (≤ 4% `<70 mg/dL`, ≤ 1% `<54 mg/dL`), minimizes Kovatchev's symmetric Blood Glucose Risk Index, sizes deadband width from empirical 5-minute CGM MAD jitter and pump bolus quantum (`0.05 U` / `0.025 U` / `0.01 U`), and computes 95% CIs via **calendar day-block bootstrap**.
 
 ---
 
@@ -55,7 +55,7 @@ $$
 
 * **Universal Nightscout Auto-Detection:** Automatically reads your active schedule blocks, `mg/dL` or `mmol/L` units, timezone, historical profile changes, and temporary target overrides from `/api/v1/profile.json`, `/api/v1/entries/sgv.json`, and `/api/v1/treatments.json`.
 * **Password-Protected Nightscout Sites:** Supports public guest URLs, Read-Only API Tokens (`?token=`), and `api-secret` SHA-1 authentication stored locally in iOS Keychain.
-* **Native Swift Charts AGP & Stability Audit:** 24-hour Ambulatory Glucose Profile (`P10–P90`, `IQR`, `Median`), rolling `24h / 7d / 30d` TIR, TBR, CV, GMI, and linearized closed-loop damping ratio ($\zeta$) & gain/phase margins.
+* **Native Swift Charts AGP & Stability Audit:** 24-hour Ambulatory Glucose Profile (`P10–P90`, `IQR`, `Median`), rolling `24h / 7d / 30d` TIR, TBR, CV, GMI, and linearized closed-loop damping ratio (<em>ζ</em>) & gain/phase margins.
 * **watchOS Companion (`NS Advisor`) & Watch Face Complications:** Syncs automatically from your paired iPhone via `WatchConnectivity` (or refreshes standalone over Watch Wi-Fi/Cellular), including `AccessoryCircular`, `AccessoryRectangular`, `AccessoryInline`, and `AccessoryCorner` WidgetKit complications.
 * **Zero-Data Demo Mode:** Built-in synthetic 30-day closed-loop generator so anyone can explore the app before connecting Nightscout.
 
