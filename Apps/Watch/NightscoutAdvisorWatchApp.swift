@@ -1,5 +1,8 @@
 import NightscoutAdvisorKit
 import SwiftUI
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 @main
 struct NightscoutAdvisorWatchApp: App {
@@ -24,6 +27,9 @@ final class WatchAdvisorViewModel: ObservableObject {
 
     init() {
         WatchSyncBridge.shared.activate()
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
         let cached = AdvisorStore.shared.loadWatchSummary()
         let creds = AdvisorStore.shared.loadCredentials()
         self.summary = cached
