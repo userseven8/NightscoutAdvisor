@@ -31,7 +31,15 @@ public enum TherapyAdvisorSolver {
             throw SolverError.missingActiveProfile
         }
 
-        let tz = TimeZone(identifier: activeProfile.timeZoneIdentifier) ?? .current
+        let resolvedTZIdentifier: String = {
+            if let pref = config.preferredTimeZoneIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !pref.isEmpty,
+               TimeZone(identifier: pref) != nil {
+                return pref
+            }
+            return activeProfile.timeZoneIdentifier
+        }()
+        let tz = TimeZone(identifier: resolvedTZIdentifier) ?? .current
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = tz
 
@@ -230,7 +238,7 @@ public enum TherapyAdvisorSolver {
 
         var basalSamplesByBlock: [Int: [Double]] = [:]
         var egpMedByBlock: [Int: Double] = [:]
-        var solvedEpisodeISFs: [(ts: TimeInterval, isf: Double)] = []
+        var solvedEpisodeDetails: [ISFEpisodeDetail] = []
 
         func integrateBasalMap(_ rateByBlock: [Int: Double], fallback: Double, from t1: TimeInterval, to t2: TimeInterval) -> Double {
             guard t2 > t1 else { return 0.0 }
@@ -273,7 +281,7 @@ public enum TherapyAdvisorSolver {
                 egpMedByBlock[bIdx] = percentile(vals.sorted(), p: 0.50)
             }
 
-            var iterEpisodes: [(ts: TimeInterval, isf: Double)] = []
+            var iterEpisodes: [ISFEpisodeDetail] = []
             var lastISFNadirTS: TimeInterval = 0.0
 
             for cl in corrClusters {
@@ -310,15 +318,26 @@ public enum TherapyAdvisorSolver {
                 if netIAbs > 0.12 {
                     let epISF = drop / netIAbs
                     if epISF >= 15.0 && epISF <= 500.0 {
-                        iterEpisodes.append((tStart, epISF))
+                        iterEpisodes.append(
+                            ISFEpisodeDetail(
+                                timestamp: tStart,
+                                bgBolusMgdL: bgBolus,
+                                bgNadirMgdL: nadirPt.sgvMgdL,
+                                dropMgdL: drop,
+                                absorbedInsulinU: iAbsWin,
+                                egpOffsetU: egpOffset,
+                                netCorrectionU: netIAbs,
+                                impliedISFMgdLPerU: epISF
+                            )
+                        )
                         lastISFNadirTS = nadirPt.timestamp
                     }
                 }
             }
 
-            solvedEpisodeISFs = iterEpisodes
+            solvedEpisodeDetails = iterEpisodes
             if !iterEpisodes.isEmpty {
-                let meanLog = iterEpisodes.map { log($0.isf) }.reduce(0.0, +) / Double(iterEpisodes.count)
+                let meanLog = iterEpisodes.map { log($0.impliedISFMgdLPerU) }.reduce(0.0, +) / Double(iterEpisodes.count)
                 geomISF = exp(meanLog)
                 recISF = roundISFToGrid(geomISF)
             }
@@ -333,18 +352,20 @@ public enum TherapyAdvisorSolver {
         for (idx, seg) in userISFBlocks.enumerated() {
             let endMin = idx + 1 < userISFBlocks.count ? userISFBlocks[idx + 1].startMinutes : 1440
             let winLabel = "\(seg.timeString) – \(formatMinutes(endMin))"
-            let blockEps = solvedEpisodeISFs.filter { ep in
-                let m = localMinuteOfDay(ep.ts)
+            let blockEps = solvedEpisodeDetails.filter { ep in
+                let m = localMinuteOfDay(ep.timestamp)
                 return m >= seg.startMinutes && m < endMin
-            }.map(\.isf)
+            }.map(\.impliedISFMgdLPerU)
 
-            let usedEps = blockEps.count >= 3 ? blockEps : solvedEpisodeISFs.map(\.isf)
+            let usedEps = blockEps.count >= 3 ? blockEps : solvedEpisodeDetails.map(\.impliedISFMgdLPerU)
             let geomVal: Double
+            let medVal: Double
             let recVal: Double
             let ciLo: Double
             let ciHi: Double
             if !usedEps.isEmpty {
                 geomVal = exp(usedEps.map { log($0) }.reduce(0.0, +) / Double(usedEps.count))
+                medVal = percentile(usedEps.sorted(), p: 0.50)
                 recVal = roundISFToGrid(geomVal)
                 let empMin = usedEps.min() ?? recVal
                 let empMax = usedEps.max() ?? recVal
@@ -352,6 +373,7 @@ public enum TherapyAdvisorSolver {
                 ciHi = empMax.rounded()
             } else {
                 geomVal = seg.value
+                medVal = seg.value
                 recVal = seg.value
                 ciLo = seg.value
                 ciHi = seg.value
@@ -380,6 +402,7 @@ public enum TherapyAdvisorSolver {
                     currentMgdLPerU: seg.value,
                     recommendedMgdLPerU: recVal,
                     geometricMeanMgdLPerU: geomVal,
+                    medianMgdLPerU: medVal,
                     ciLowMgdLPerU: ciLo,
                     ciHighMgdLPerU: ciHi,
                     episodeCount: usedEps.count,
@@ -389,15 +412,18 @@ public enum TherapyAdvisorSolver {
             )
         }
 
+        let allEpISFs = solvedEpisodeDetails.map(\.impliedISFMgdLPerU).sorted()
+        let globalMedISF = allEpISFs.isEmpty ? userISFBlocks[0].value : percentile(allEpISFs, p: 0.50)
         let globalISFRec = ISFRecommendation(
             timeString: userISFBlocks[0].timeString,
             windowLabel: "00:00 – 24:00",
             currentMgdLPerU: userISFBlocks[0].value,
             recommendedMgdLPerU: recISF,
             geometricMeanMgdLPerU: geomISF,
+            medianMgdLPerU: globalMedISF,
             ciLowMgdLPerU: isfRecommendations.first?.ciLowMgdLPerU ?? recISF,
             ciHighMgdLPerU: isfRecommendations.first?.ciHighMgdLPerU ?? recISF,
-            episodeCount: solvedEpisodeISFs.count,
+            episodeCount: solvedEpisodeDetails.count,
             status: isfRecommendations.first?.status ?? .inSync,
             rationale: isfRecommendations.first?.rationale ?? ""
         )
@@ -520,6 +546,7 @@ public enum TherapyAdvisorSolver {
         let mealHorizonSec: TimeInterval = 12600.0 // 3.5h horizon
         var slotPts: [Int: [(carbs: Double, iFood: Double)]] = [:]
         var slotDeltas: [Int: [Double]] = [:]
+        var slotRescueCounts: [Int: Int] = [:]
 
         for cl in clusteredMeals {
             let mt = cl.startTS
@@ -560,6 +587,9 @@ public enum TherapyAdvisorSolver {
                 slotPts[cIdx, default: []].append((totCarbs, iFood))
                 let activeTMid = activeTargetMid(at: mt + mealHorizonSec)
                 slotDeltas[cIdx, default: []].append(bgEnd - activeTMid)
+                if hasLoggedFollowup || nadirBG < 70.0 {
+                    slotRescueCounts[cIdx, default: 0] += 1
+                }
             }
         }
 
@@ -569,6 +599,7 @@ public enum TherapyAdvisorSolver {
             let winLabel = "\(seg.timeString) – \(formatMinutes(endMin))"
             let pts = slotPts[cIdx] ?? []
             let deltas = slotDeltas[cIdx] ?? []
+            let rescueN = slotRescueCounts[cIdx] ?? 0
             let n = pts.count
             let isNocturnalSlot = (seg.startMinutes == 0 && endMin <= 540) || seg.startMinutes >= 1260
 
@@ -584,12 +615,17 @@ public enum TherapyAdvisorSolver {
                     return acc + (r * r) / item.carbs
                 } / Double(df)
                 let seBeta = sumC > 0 ? sqrt(s2WLS / sumC) : 0.0
+                let relSE = betaWLS > 0 ? (seBeta / betaWLS) : 1.0
                 let tCrit = studentTCrit95(df: df)
                 let betaLow = max(1e-4, betaWLS - tCrit * seBeta)
                 let betaHigh = betaWLS + tCrit * seBeta
 
                 let crCILo = ((1.0 / betaHigh) * 10.0).rounded() / 10.0
                 let crCIHi = ((1.0 / betaLow) * 10.0).rounded() / 10.0
+
+                let empCRs = pts.compactMap { $0.iFood > 0 ? ($0.carbs / $0.iFood) : nil }
+                let empMin = empCRs.min().map { ($0 * 10.0).rounded() / 10.0 } ?? seg.value
+                let empMax = empCRs.max().map { ($0 * 10.0).rounded() / 10.0 } ?? seg.value
 
                 let meanC = sumC / Double(n)
                 let meanI = sumI / Double(n)
@@ -610,6 +646,10 @@ public enum TherapyAdvisorSolver {
                             rawWLSGramsPerUnit: wlsCR,
                             ciLowGramsPerUnit: crCILo,
                             ciHighGramsPerUnit: crCIHi,
+                            empiricalMinGramsPerUnit: empMin,
+                            empiricalMaxGramsPerUnit: empMax,
+                            relativeStandardError: relSE,
+                            rescueWindowCount: rescueN,
                             centeredRSquared: rSquared,
                             medianPostMealTargetDeltaMgdL: medDelta,
                             mealCount: n,
@@ -627,6 +667,10 @@ public enum TherapyAdvisorSolver {
                             rawWLSGramsPerUnit: wlsCR,
                             ciLowGramsPerUnit: crCILo,
                             ciHighGramsPerUnit: crCIHi,
+                            empiricalMinGramsPerUnit: empMin,
+                            empiricalMaxGramsPerUnit: empMax,
+                            relativeStandardError: relSE,
+                            rescueWindowCount: rescueN,
                             centeredRSquared: rSquared,
                             medianPostMealTargetDeltaMgdL: medDelta,
                             mealCount: n,
@@ -661,6 +705,10 @@ public enum TherapyAdvisorSolver {
                             rawWLSGramsPerUnit: wlsCR,
                             ciLowGramsPerUnit: crCILo,
                             ciHighGramsPerUnit: crCIHi,
+                            empiricalMinGramsPerUnit: empMin,
+                            empiricalMaxGramsPerUnit: empMax,
+                            relativeStandardError: relSE,
+                            rescueWindowCount: rescueN,
                             centeredRSquared: rSquared,
                             medianPostMealTargetDeltaMgdL: medDelta,
                             mealCount: n,
@@ -679,6 +727,10 @@ public enum TherapyAdvisorSolver {
                         rawWLSGramsPerUnit: seg.value,
                         ciLowGramsPerUnit: seg.value,
                         ciHighGramsPerUnit: seg.value,
+                        empiricalMinGramsPerUnit: seg.value,
+                        empiricalMaxGramsPerUnit: seg.value,
+                        relativeStandardError: 0.0,
+                        rescueWindowCount: rescueN,
                         centeredRSquared: 0.0,
                         medianPostMealTargetDeltaMgdL: 0.0,
                         mealCount: n,
@@ -715,10 +767,46 @@ public enum TherapyAdvisorSolver {
         }
 
         let targetWindows: [TargetEvalWindow] = {
-            if activeProfile.targetSchedule.count >= 2 {
-                return activeProfile.targetSchedule.enumerated().map { idx, seg in
-                    let endMin = idx + 1 < activeProfile.targetSchedule.count
-                        ? activeProfile.targetSchedule[idx + 1].startMinutes
+            let sched = activeProfile.targetSchedule
+            if sched.count >= 3,
+               let first = sched.first,
+               let last = sched.last,
+               first.startMinutes == 0,
+               last.startMinutes > 0,
+               abs(first.lowMgdL - last.lowMgdL) < 0.5,
+               abs(first.highMgdL - last.highMgdL) < 0.5 {
+                // Merge contiguous midnight wrap-around window (e.g. 22:00-24:00 + 00:00-08:30)
+                let wrapEndMin = sched[1].startMinutes
+                var windows: [TargetEvalWindow] = [
+                    TargetEvalWindow(
+                        timeString: last.timeString,
+                        label: "Overnight & Dawn (\(last.timeString) – \(formatMinutes(wrapEndMin)))",
+                        curLow: last.lowMgdL,
+                        curHigh: last.highMgdL,
+                        matchesMinute: { m in m >= last.startMinutes || m < wrapEndMin }
+                    )
+                ]
+                for idx in 1..<(sched.count - 1) {
+                    let seg = sched[idx]
+                    let endMin = sched[idx + 1].startMinutes
+                    let prefix = (sched.count == 3) ? "Daytime Active " : ""
+                    windows.append(
+                        TargetEvalWindow(
+                            timeString: seg.timeString,
+                            label: prefix.isEmpty
+                                ? "\(seg.timeString) – \(formatMinutes(endMin))"
+                                : "\(prefix)(\(seg.timeString) – \(formatMinutes(endMin)))",
+                            curLow: seg.lowMgdL,
+                            curHigh: seg.highMgdL,
+                            matchesMinute: { m in m >= seg.startMinutes && m < endMin }
+                        )
+                    )
+                }
+                return windows
+            } else if sched.count >= 2 {
+                return sched.enumerated().map { idx, seg in
+                    let endMin = idx + 1 < sched.count
+                        ? sched[idx + 1].startMinutes
                         : 1440
                     return TargetEvalWindow(
                         timeString: seg.timeString,
@@ -729,7 +817,7 @@ public enum TherapyAdvisorSolver {
                     )
                 }
             } else {
-                let single = activeProfile.targetSchedule.first
+                let single = sched.first
                     ?? TargetScheduleSegment(startMinutes: 0, timeString: "00:00", lowMgdL: 110.0, highMgdL: 125.0)
                 return [
                     TargetEvalWindow(
@@ -763,7 +851,7 @@ public enum TherapyAdvisorSolver {
             }
             errsAll.sort()
 
-            let (optMid, floorMid, bgriMin) = solveOptimalTargetMidpoint(sortedErrors: errsAll, strideStep: 1)
+            let (optMid, floorMid, bgriMin, q04Val, q01Val) = solveOptimalTargetMidpoint(sortedErrors: errsAll, strideStep: 1)
             let recLow: Double
             let recHigh: Double
             if displayUnit == .mmolL {
@@ -789,7 +877,7 @@ public enum TherapyAdvisorSolver {
                         flat.append(contentsOf: blocksArray[pick])
                     }
                     flat.sort()
-                    let (bm, _, _) = solveOptimalTargetMidpoint(sortedErrors: flat, strideStep: 4)
+                    let (bm, _, _, _, _) = solveOptimalTargetMidpoint(sortedErrors: flat, strideStep: 4)
                     bootMids.append(bm)
                 }
                 bootMids.sort()
@@ -824,6 +912,9 @@ public enum TherapyAdvisorSolver {
                     ciMidLowMgdL: ciMidLo,
                     ciMidHighMgdL: ciMidHi,
                     safetyFloorMidMgdL: floorMid,
+                    q04ErrorMgdL: q04Val,
+                    q01ErrorMgdL: q01Val,
+                    sampleCount: errsAll.count,
                     bgriScore: bgriMin,
                     predictedTIRPercent: predTIR,
                     dayCount: dayBlocks.count,
@@ -865,7 +956,9 @@ public enum TherapyAdvisorSolver {
             generatedAt: Date(),
             sourceURL: bundle.sourceURL,
             activeProfileName: activeProfile.profileName,
-            timeZoneIdentifier: activeProfile.timeZoneIdentifier,
+            profileUpdatedTimestamp: activeProfile.effectiveTimestamp,
+            latestCGMTimestamp: maxTS,
+            timeZoneIdentifier: tz.identifier,
             displayUnit: displayUnit,
             rollingDays: config.rollingDays,
             settingsUsed: effectiveConfig,
@@ -874,6 +967,7 @@ public enum TherapyAdvisorSolver {
             statsRolling: statsRolling,
             agpBins: agpBins,
             globalISF: globalISFRec,
+            isfEpisodes: solvedEpisodeDetails,
             isfSchedule: isfRecommendations,
             basalSchedule: basalRecommendations,
             carbRatioSchedule: crRecommendations,
@@ -892,9 +986,9 @@ public enum TherapyAdvisorSolver {
         return 10.0 * fSym * fSym
     }
 
-    private static func solveOptimalTargetMidpoint(sortedErrors: [Double], strideStep: Int) -> (Double, Double, Double) {
+    private static func solveOptimalTargetMidpoint(sortedErrors: [Double], strideStep: Int) -> (Double, Double, Double, Double, Double) {
         let n = sortedErrors.count
-        guard n >= 20 else { return (112.5, 105.0, 4.0) }
+        guard n >= 20 else { return (112.5, 105.0, 4.0, -35.0, -50.0) }
         let q04 = sortedErrors[min(n - 1, max(0, Int(0.04 * Double(n))))]
         let q01 = sortedErrors[min(n - 1, max(0, Int(0.01 * Double(n))))]
         let tFloor = max(70.0 - q04, 54.0 - q01)
@@ -918,7 +1012,7 @@ public enum TherapyAdvisorSolver {
                 bestMid = cand
             }
         }
-        return (bestMid, tFloor, bestBGRI)
+        return (bestMid, tFloor, bestBGRI, q04, q01)
     }
 
     private static func computeStabilityAudit(
@@ -955,6 +1049,21 @@ public enum TherapyAdvisorSolver {
         let cCrit = (bCoeff * bCoeff) / (4.0 * aCoeff)
         let critISFBound = isfTrue / max(0.05, cCrit - 1.0)
         let gainMargin = critISFBound > 0 ? (recISF / critISFBound) : 1.2
+
+        var loW = 0.1
+        var hiW = 10.0
+        for _ in 0..<50 {
+            let midW = 0.5 * (loW + hiW)
+            let phaseLag = -atan(midW * tauDIA) - midW * tauDelay
+            if phaseLag > -.pi {
+                loW = midW
+            } else {
+                hiW = midW
+            }
+        }
+        let omegaU = 0.5 * (loW + hiW)
+        let oscPeriodHrs = (2.0 * .pi) / omegaU
+
         let omegaC = 0.12
         let phaseAtC = -atan(omegaC * tauDIA) - omegaC * tauDelay
         let phaseMarginDeg = 180.0 + (phaseAtC * 180.0 / .pi)
@@ -965,6 +1074,8 @@ public enum TherapyAdvisorSolver {
             criticalISFBoundMgdLPerU: critISFBound,
             gainMarginMultiplier: gainMargin,
             phaseMarginDegrees: phaseMarginDeg,
+            omegaUltimate: omegaU,
+            oscillationPeriodHours: oscPeriodHrs,
             sensorJitterMgdL: sensorJitterMgdL,
             pumpStepImpactMgdL: pumpStepImpactMgdL,
             isOverdampedStable: dampingRatio >= 0.85

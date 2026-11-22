@@ -89,6 +89,37 @@ public struct AGPBin: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public struct ISFEpisodeDetail: Codable, Equatable, Sendable {
+    public let timestamp: TimeInterval
+    public let bgBolusMgdL: Double
+    public let bgNadirMgdL: Double
+    public let dropMgdL: Double
+    public let absorbedInsulinU: Double
+    public let egpOffsetU: Double
+    public let netCorrectionU: Double
+    public let impliedISFMgdLPerU: Double
+
+    public init(
+        timestamp: TimeInterval,
+        bgBolusMgdL: Double,
+        bgNadirMgdL: Double,
+        dropMgdL: Double,
+        absorbedInsulinU: Double,
+        egpOffsetU: Double,
+        netCorrectionU: Double,
+        impliedISFMgdLPerU: Double
+    ) {
+        self.timestamp = timestamp
+        self.bgBolusMgdL = bgBolusMgdL
+        self.bgNadirMgdL = bgNadirMgdL
+        self.dropMgdL = dropMgdL
+        self.absorbedInsulinU = absorbedInsulinU
+        self.egpOffsetU = egpOffsetU
+        self.netCorrectionU = netCorrectionU
+        self.impliedISFMgdLPerU = impliedISFMgdLPerU
+    }
+}
+
 public struct ISFRecommendation: Codable, Equatable, Identifiable, Sendable {
     public var id: String { timeString }
     public let timeString: String
@@ -96,6 +127,7 @@ public struct ISFRecommendation: Codable, Equatable, Identifiable, Sendable {
     public let currentMgdLPerU: Double
     public let recommendedMgdLPerU: Double
     public let geometricMeanMgdLPerU: Double
+    public let medianMgdLPerU: Double?
     public let ciLowMgdLPerU: Double
     public let ciHighMgdLPerU: Double
     public let episodeCount: Int
@@ -127,6 +159,10 @@ public struct CarbRatioRecommendation: Codable, Equatable, Identifiable, Sendabl
     public let rawWLSGramsPerUnit: Double
     public let ciLowGramsPerUnit: Double
     public let ciHighGramsPerUnit: Double
+    public let empiricalMinGramsPerUnit: Double?
+    public let empiricalMaxGramsPerUnit: Double?
+    public let relativeStandardError: Double?
+    public let rescueWindowCount: Int?
     public let centeredRSquared: Double
     public let medianPostMealTargetDeltaMgdL: Double
     public let mealCount: Int
@@ -146,6 +182,9 @@ public struct TargetRangeRecommendation: Codable, Equatable, Identifiable, Senda
     public let ciMidLowMgdL: Double
     public let ciMidHighMgdL: Double
     public let safetyFloorMidMgdL: Double
+    public let q04ErrorMgdL: Double?
+    public let q01ErrorMgdL: Double?
+    public let sampleCount: Int?
     public let bgriScore: Double
     public let predictedTIRPercent: Double
     public let dayCount: Int
@@ -159,6 +198,8 @@ public struct ControlStabilityAudit: Codable, Equatable, Sendable {
     public let criticalISFBoundMgdLPerU: Double
     public let gainMarginMultiplier: Double
     public let phaseMarginDegrees: Double
+    public let omegaUltimate: Double?
+    public let oscillationPeriodHours: Double?
     public let sensorJitterMgdL: Double
     public let pumpStepImpactMgdL: Double
     public let isOverdampedStable: Bool
@@ -168,6 +209,8 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
     public let generatedAt: Date
     public let sourceURL: String
     public let activeProfileName: String
+    public let profileUpdatedTimestamp: TimeInterval?
+    public let latestCGMTimestamp: TimeInterval?
     public let timeZoneIdentifier: String
     public let displayUnit: BGUnit
     public let rollingDays: Int
@@ -177,6 +220,7 @@ public struct AdvisorReport: Codable, Equatable, Sendable {
     public let statsRolling: GlycemicWindowStats
     public let agpBins: [AGPBin]
     public let globalISF: ISFRecommendation
+    public let isfEpisodes: [ISFEpisodeDetail]?
     public let isfSchedule: [ISFRecommendation]
     public let basalSchedule: [BasalRecommendation]
     public let carbRatioSchedule: [CarbRatioRecommendation]

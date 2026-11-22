@@ -14,9 +14,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Run NightscoutAdvisorKit Unit Tests
+      - name: Run NightscoutAdvisorKit Unit Tests & CLI Smoke Check
         working-directory: Packages/NightscoutAdvisorKit
-        run: swift test
+        run: |
+          swift test
+          swift run -c release advisor-cli --demo > /dev/null
 
       - name: Build iOS + watchOS + Complications (Unsigned Simulator)
         run: |

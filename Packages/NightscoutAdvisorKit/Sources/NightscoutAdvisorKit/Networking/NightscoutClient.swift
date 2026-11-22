@@ -129,16 +129,31 @@ public struct NightscoutClient: Sendable {
             request.setValue(sha1Hex, forHTTPHeaderField: "api-secret")
         }
 
-        let (data, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse {
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw ClientError.unauthorized
+        let maxAttempts = 3
+        var lastError: Error?
+        for attempt in 1...maxAttempts {
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse {
+                    if http.statusCode == 401 || http.statusCode == 403 {
+                        throw ClientError.unauthorized
+                    }
+                    if !(200...299).contains(http.statusCode) {
+                        throw ClientError.httpError(http.statusCode)
+                    }
+                }
+                return data
+            } catch let err as ClientError {
+                if case .unauthorized = err { throw err }
+                lastError = err
+            } catch {
+                lastError = error
             }
-            if !(200...299).contains(http.statusCode) {
-                throw ClientError.httpError(http.statusCode)
+            if attempt < maxAttempts {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000)
             }
         }
-        return data
+        throw lastError ?? ClientError.httpError(503)
     }
 
     // MARK: - Nightscout JSON Parsers

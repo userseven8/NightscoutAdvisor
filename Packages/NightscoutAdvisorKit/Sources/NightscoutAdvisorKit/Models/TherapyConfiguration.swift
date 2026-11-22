@@ -129,6 +129,7 @@ public struct TherapySettingsConfig: Codable, Equatable, Sendable {
     public var dosingMode: ClosedLoopDosingMode
     public var rollingDays: Int
     public var preferredUnitOverride: BGUnit?
+    public var preferredTimeZoneIdentifier: String?
 
     public init(
         insulinPreset: InsulinPreset = .lyumjevFiasp,
@@ -137,7 +138,8 @@ public struct TherapySettingsConfig: Codable, Equatable, Sendable {
         pumpQuantum: PumpQuantum = .omnipod005,
         dosingMode: ClosedLoopDosingMode = .automaticBolus,
         rollingDays: Int = 30,
-        preferredUnitOverride: BGUnit? = nil
+        preferredUnitOverride: BGUnit? = nil,
+        preferredTimeZoneIdentifier: String? = nil
     ) {
         self.insulinPreset = insulinPreset
         self.customPeakMinutes = customPeakMinutes
@@ -146,6 +148,7 @@ public struct TherapySettingsConfig: Codable, Equatable, Sendable {
         self.dosingMode = dosingMode
         self.rollingDays = rollingDays
         self.preferredUnitOverride = preferredUnitOverride
+        self.preferredTimeZoneIdentifier = preferredTimeZoneIdentifier
     }
 
     public var peakMinutes: Double {
