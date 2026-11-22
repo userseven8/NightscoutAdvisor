@@ -29,23 +29,25 @@ Legacy parameter tuners (such as OpenAPS Autotune) were designed for older temp-
 
 Nightscout Advisor solves all four closed-loop therapy schedules directly from your Nightscout telemetry:
 
-1. **Stage 1 — Coupled Insulin-Kinetics ISF & Log-Symmetric Geometric Estimator**
-   * Reconstructs continuous historical scheduled basals, truncated non-overlapping temp basals, and boluses across up to 200 historical Nightscout profile versions.
-   * Convolves delivery with exact exponential subcutaneous insulin kinetics (`Lyumjev / Fiasp` peak `55 min` or `Humalog / Novolog / Apidra` peak `65–75 min`):
+### Stage 1 — Coupled Insulin-Kinetics ISF & Log-Symmetric Geometric Estimator
+* Reconstructs continuous historical scheduled basals, truncated non-overlapping temp basals, and boluses across up to 200 historical Nightscout profile versions.
+* Convolves delivery with exact exponential subcutaneous insulin kinetics (`Lyumjev / Fiasp` peak `55 min` or `Humalog / Novolog / Apidra` peak `65–75 min`):
 
-     $$I_{\mathrm{abs}}(t_1, t_2) = \mathrm{IOB}(t_1) + I_{\mathrm{deliv}}(t_1, t_2) - \mathrm{IOB}(t_2)$$
+$$
+I_{\mathrm{abs}}(t_1, t_2) = \mathrm{IOB}(t_1) + I_{\mathrm{deliv}}(t_1, t_2) - \mathrm{IOB}(t_2)
+$$
 
-   * Computes the log-space Maximum Likelihood Estimator (geometric mean) across carb-free correction episodes rather than dose-weighted pooling ($\sum \Delta\mathrm{BG} / \sum I$), preventing insulin-resistant high-dose nights from biasing ISF dangerously low.
+* Computes the log-space Maximum Likelihood Estimator (geometric mean) across carb-free correction episodes rather than dose-weighted pooling ($\sum \Delta\mathrm{BG} / \sum I$), preventing insulin-resistant high-dose nights from biasing ISF dangerously low.
 
-2. **Stage 2 — ATTD Closed-Loop Basal Quantile** ($\tau^* = 4/29 \approx 13.8\%$)
-   * In Automatic Bolus / SMB controllers, actuation is physically one-sided: the controller can add micro-boluses upward on higher-demand nights, but cannot extract subcutaneous insulin infused an hour earlier.
-   * Applies the Koenker–Bassett / Newsvendor quantile derived directly from the ATTD consensus limits (4% allowable TBR vs. 25% allowable TAR) uniformly across your Nightscout basal schedule.
+### Stage 2 — ATTD Closed-Loop Basal Quantile ($\tau^* = 4/29 \approx 0.138$, or 13.8%)
+* In Automatic Bolus / SMB controllers, actuation is physically one-sided: the controller can add micro-boluses upward on higher-demand nights, but cannot extract subcutaneous insulin infused an hour earlier.
+* Applies the Koenker–Bassett / Newsvendor quantile derived directly from the ATTD consensus limits (4% allowable TBR vs. 25% allowable TAR) uniformly across your Nightscout basal schedule.
 
-3. **Stage 3 — Postprandial Mass-Balance & Gauss–Markov WLS** ($w_i = 1/C_i$)
-   * Clusters multi-part meals, accounts for rescue carbs, integrates piecewise scheduled basal across schedule boundaries, evaluates 3.5-hour postprandial settling relative to active targets (`profile.json` + `Temporary Override` / `Temporary Target` events), and applies proportional shot-noise Weighted Least Squares ($\mathrm{CR} = \sum C_i / \sum I_i$) with Student-*t* 95% CIs.
+### Stage 3 — Postprandial Mass-Balance & Gauss–Markov WLS ($w_i = 1/C_i$)
+* Clusters multi-part meals, accounts for rescue carbs, integrates piecewise scheduled basal across schedule boundaries, evaluates 3.5-hour postprandial settling relative to active targets (`profile.json` + `Temporary Override` / `Temporary Target` events), and applies proportional shot-noise Weighted Least Squares ($\mathrm{CR} = \sum C_i / \sum I_i$) with Student-*t* 95% CIs.
 
-4. **Stage 4 — Optimal Correction Range (ATTD Safety Floor + Kovatchev BGRI + Deadband Physics)**
-   * Isolates empirical closed-loop tracking error $\varepsilon(t) = \mathrm{BG}(t) - T_{\mathrm{active}}(t)$, enforces ATTD hypoglycemia tail floors (≤ 4% `<70 mg/dL`, ≤ 1% `<54 mg/dL`), minimizes Kovatchev's symmetric Blood Glucose Risk Index, sizes deadband width from empirical 5-minute CGM MAD jitter and pump bolus quantum (`0.05 U` / `0.025 U` / `0.01 U`), and computes 95% CIs via **calendar day-block bootstrap**.
+### Stage 4 — Optimal Correction Range (ATTD Safety Floor + Kovatchev BGRI + Deadband Physics)
+* Isolates empirical closed-loop tracking error $\varepsilon(t) = \mathrm{BG}(t) - T_{\mathrm{active}}(t)$, enforces ATTD hypoglycemia tail floors (≤ 4% `<70 mg/dL`, ≤ 1% `<54 mg/dL`), minimizes Kovatchev's symmetric Blood Glucose Risk Index, sizes deadband width from empirical 5-minute CGM MAD jitter and pump bolus quantum (`0.05 U` / `0.025 U` / `0.01 U`), and computes 95% CIs via **calendar day-block bootstrap**.
 
 ---
 
