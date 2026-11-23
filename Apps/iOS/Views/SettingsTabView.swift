@@ -10,12 +10,16 @@ struct SettingsTabView: View {
             Form {
                 Section("Nightscout") {
                     TextField("Nightscout URL (https://…)", text: $viewModel.credentials.baseURLString)
+                        #if os(iOS)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
+                        #endif
                         .autocorrectionDisabled()
 
                     SecureField("API Token (Optional)", text: $viewModel.credentials.apiToken)
+                        #if os(iOS)
                         .textInputAutocapitalization(.never)
+                        #endif
                         .autocorrectionDisabled()
                 }
 
@@ -108,10 +112,15 @@ struct SettingsTabView: View {
                     .disabled(viewModel.isLoading)
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Settings")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #else
+            .frame(minWidth: 500, minHeight: 540)
+            #endif
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
             }

@@ -28,6 +28,17 @@
 
 		A30000010000000000000001 /* NightscoutAdvisorComplications.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000B0000000000000001 /* NightscoutAdvisorComplications.swift */; };
 		A30000020000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000030000000000000001 /* NightscoutAdvisorKit */; };
+
+		A40000010000000000000001 /* NightscoutAdvisorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000010000000000000001 /* NightscoutAdvisorApp.swift */; };
+		A40000020000000000000001 /* AdvisorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000020000000000000001 /* AdvisorViewModel.swift */; };
+		A40000030000000000000001 /* RootContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000030000000000000001 /* RootContentView.swift */; };
+		A40000040000000000000001 /* OverviewTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000040000000000000001 /* OverviewTabView.swift */; };
+		A40000050000000000000001 /* SchedulesTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000050000000000000001 /* SchedulesTabView.swift */; };
+		A40000060000000000000001 /* MethodologyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000060000000000000001 /* MethodologyTabView.swift */; };
+		A40000070000000000000001 /* SettingsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000070000000000000001 /* SettingsTabView.swift */; };
+		A40000080000000000000001 /* WatchSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000080000000000000001 /* WatchSyncBridge.swift */; };
+		A40000090000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000040000000000000001 /* NightscoutAdvisorKit */; };
+		A400000B0000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F100000D0000000000000001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,6 +102,7 @@
 		F20000000000000000000001 /* NightscoutAdvisor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NightscoutAdvisor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000010000000000000001 /* NightscoutAdvisorWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NightscoutAdvisorWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NightscoutAdvisorWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F20000030000000000000001 /* NS Advisor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NS Advisor.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +127,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A30000020000000000000001 /* NightscoutAdvisorKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B40000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A40000090000000000000001 /* NightscoutAdvisorKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -205,6 +225,7 @@
 				F20000000000000000000001 /* NightscoutAdvisor.app */,
 				F20000010000000000000001 /* NightscoutAdvisorWatch.app */,
 				F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */,
+				F20000030000000000000001 /* NS Advisor.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -275,6 +296,26 @@
 			productReference = F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		T40000010000000000000001 /* NightscoutAdvisorMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = L40000010000000000000001 /* Build configuration list for PBXNativeTarget "NightscoutAdvisorMac" */;
+			buildPhases = (
+				S40000010000000000000001 /* Sources */,
+				B40000010000000000000001 /* Frameworks */,
+				R40000010000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NightscoutAdvisorMac;
+			packageProductDependencies = (
+				P10000040000000000000001 /* NightscoutAdvisorKit */,
+			);
+			productName = "NS Advisor";
+			productReference = F20000030000000000000001 /* NS Advisor.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -304,6 +345,7 @@
 				T10000010000000000000001 /* NightscoutAdvisor */,
 				T20000010000000000000001 /* NightscoutAdvisorWatch */,
 				T30000010000000000000001 /* NightscoutAdvisorWatchWidgets */,
+				T40000010000000000000001 /* NightscoutAdvisorMac */,
 			);
 		};
 /* End PBXProject section */
@@ -322,6 +364,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000060000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		R40000010000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A400000B0000000000000001 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -358,6 +408,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				A30000010000000000000001 /* NightscoutAdvisorComplications.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		S40000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A40000010000000000000001 /* NightscoutAdvisorApp.swift in Sources */,
+				A40000020000000000000001 /* AdvisorViewModel.swift in Sources */,
+				A40000030000000000000001 /* RootContentView.swift in Sources */,
+				A40000040000000000000001 /* OverviewTabView.swift in Sources */,
+				A40000050000000000000001 /* SchedulesTabView.swift in Sources */,
+				A40000060000000000000001 /* MethodologyTabView.swift in Sources */,
+				A40000070000000000000001 /* SettingsTabView.swift in Sources */,
+				A40000080000000000000001 /* WatchSyncBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -559,6 +624,55 @@
 			};
 			name = Release;
 		};
+
+		X40000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "NS Advisor";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MAC_APP_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "NS Advisor";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Debug;
+		};
+		X40000020000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "NS Advisor";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MAC_APP_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "NS Advisor";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -598,6 +712,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		L40000010000000000000001 /* Build configuration list for PBXNativeTarget "NightscoutAdvisorMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X40000010000000000000001 /* Debug */,
+				X40000020000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -619,6 +742,11 @@
 			productName = NightscoutAdvisorKit;
 		};
 		P10000030000000000000001 /* NightscoutAdvisorKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = K10000010000000000000001 /* XCLocalSwiftPackageReference "Packages/NightscoutAdvisorKit" */;
+			productName = NightscoutAdvisorKit;
+		};
+		P10000040000000000000001 /* NightscoutAdvisorKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = K10000010000000000000001 /* XCLocalSwiftPackageReference "Packages/NightscoutAdvisorKit" */;
 			productName = NightscoutAdvisorKit;

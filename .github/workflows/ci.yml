@@ -28,3 +28,11 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Build Native macOS App + Menu Bar Target
+        run: |
+          xcodebuild \
+            -project NightscoutAdvisor.xcodeproj \
+            -scheme NightscoutAdvisorMac \
+            -destination 'platform=macOS,arch=arm64' \
+            build

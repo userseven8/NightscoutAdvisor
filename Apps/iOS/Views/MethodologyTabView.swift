@@ -41,7 +41,9 @@ struct MethodologyTabView: View {
                     )
                 }
             }
+            #if os(iOS)
             .listStyle(.insetGrouped)
+            #endif
             .navigationTitle("Methodology")
         }
     }
@@ -57,7 +59,7 @@ private struct MethodologyRow: View {
                 .font(.caption.monospaced().weight(.semibold))
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
             Text(explanation)
                 .font(.footnote)
                 .foregroundStyle(.secondary)

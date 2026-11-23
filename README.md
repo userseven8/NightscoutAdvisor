@@ -2,7 +2,7 @@
   <img src="Apps/Shared/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="108" style="border-radius: 24px;" alt="NS Advisor Icon" />
 </p>
 
-# Nightscout Advisor (`NS Advisor` for iOS & watchOS)
+# Nightscout Advisor (`NS Advisor` for iOS, watchOS & macOS)
 
 > [!CAUTION]
 > **Experimental `#WeAreNotWaiting` Open-Source Research Code — Not a Medical Device & Not Medical Advice**
@@ -57,6 +57,7 @@ Nightscout Advisor solves all four closed-loop therapy schedules directly from y
 * **Password-Protected Nightscout Sites:** Supports public guest URLs, Read-Only API Tokens (`?token=`), and `api-secret` SHA-1 authentication stored locally in iOS Keychain.
 * **Native Swift Charts AGP & Stability Audit:** 24-hour Ambulatory Glucose Profile (`P10–P90`, `IQR`, `Median`), rolling `24h / 7d / 30d` TIR, TBR, CV, GMI, and linearized closed-loop damping ratio (<em>ζ</em>) & gain/phase margins.
 * **watchOS Companion (`NS Advisor`) & Watch Face Complications:** Syncs automatically from your paired iPhone via `WatchConnectivity` (or refreshes standalone over Watch Wi-Fi/Cellular), including `AccessoryCircular`, `AccessoryRectangular`, `AccessoryInline`, and `AccessoryCorner` WidgetKit complications.
+* **Native macOS App + Menu Bar `✓` Status Item:** Runs natively on macOS 14+ (`NightscoutAdvisorMac` scheme) with a full desktop AGP window plus a live macOS Menu Bar popover that refreshes automatically in the background every 30 minutes.
 * **Zero-Data Demo Mode:** Built-in synthetic 30-day closed-loop generator so anyone can explore the app before connecting Nightscout.
 
 ---
@@ -92,7 +93,14 @@ If you already build open-source Nightscout / DIY AID apps for yourself via GitH
    DEVELOPMENT_TEAM = YOUR_TEAM_ID
    BUNDLE_ID_PREFIX = com.yourname.nightscoutadvisor
    ```
-3. Open `NightscoutAdvisor.xcodeproj` in **Xcode 16+**, select your iPhone or Simulator, and press **Run (`⌘R`)**.
+3. Open `NightscoutAdvisor.xcodeproj` in **Xcode 16+**:
+   * **For iPhone & Apple Watch:** Select the **`NightscoutAdvisor`** scheme, choose your iPhone or Simulator, and press **Run (`⌘R`)**.
+   * **For macOS (`/Applications/NS Advisor.app`):** Select the **`NightscoutAdvisorMac`** scheme (no Apple Developer account required—uses local ad-hoc signing), choose **My Mac**, and press **Run (`⌘R`)**, or build & install straight to `/Applications` from Terminal:
+     ```bash
+     xcodebuild -project NightscoutAdvisor.xcodeproj -scheme NightscoutAdvisorMac -configuration Release -derivedDataPath .build-mac build
+     cp -R ".build-mac/Build/Products/Release/NS Advisor.app" /Applications/
+     open "/Applications/NS Advisor.app"
+     ```
 
 ---
 

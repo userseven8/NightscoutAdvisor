@@ -14,6 +14,7 @@ final class AdvisorViewModel: ObservableObject {
 
     private let store = AdvisorStore.shared
     private let client = NightscoutClient()
+    private var autoRefreshTask: Task<Void, Never>?
 
     init() {
         let savedCreds = AdvisorStore.shared.loadCredentials()
@@ -42,6 +43,18 @@ final class AdvisorViewModel: ObservableObject {
                 Task { await refreshFromNightscout() }
             }
         }
+
+        #if os(macOS)
+        self.autoRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1800 * 1_000_000_000)
+                guard let self, !Task.isCancelled else { break }
+                if self.hasAcceptedDIYDisclaimer && self.hasNightscoutURL && !self.isLoading {
+                    await self.refreshFromNightscout()
+                }
+            }
+        }
+        #endif
     }
 
     func acceptDIYDisclaimer() {

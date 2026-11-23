@@ -108,11 +108,14 @@ struct DIYSafetyAcknowledgmentView: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Safety & Disclaimer")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 if isReadOnlyReview {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                     }
                 }
@@ -154,13 +157,15 @@ struct OnboardingWelcomeView: View {
             Form {
                 Section {
                     TextField("Nightscout URL (https://…)", text: $viewModel.credentials.baseURLString)
+                        #if os(iOS)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
+                        #endif
                         .autocorrectionDisabled()
                 } header: {
                     Text("Connect Nightscout")
                 } footer: {
-                    Text("Reads historical glucose and treatment telemetry privately on your iPhone (read-only).")
+                    Text("Reads historical glucose and treatment telemetry privately on your device (read-only).")
                 }
 
                 Section {
@@ -184,7 +189,9 @@ struct OnboardingWelcomeView: View {
                         }
 
                         SecureField("API Token (if private site)", text: $viewModel.credentials.apiToken)
+                            #if os(iOS)
                             .textInputAutocapitalization(.never)
+                            #endif
                             .autocorrectionDisabled()
                     }
                 }
@@ -223,6 +230,7 @@ struct OnboardingWelcomeView: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("NS Advisor")
         }
     }

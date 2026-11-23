@@ -71,7 +71,11 @@ struct OverviewTabView: View {
                     onSelectDetail: { selectedDetail = $0 }
                 )
             }
+            #if os(iOS)
             .listStyle(.insetGrouped)
+            #else
+            .listStyle(.inset)
+            #endif
             .navigationTitle("NS Advisor")
             .refreshable {
                 if viewModel.isDemoMode && !viewModel.hasNightscoutURL {
@@ -81,15 +85,46 @@ struct OverviewTabView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                #if os(macOS)
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task {
+                            if viewModel.isDemoMode && !viewModel.hasNightscoutURL {
+                                await viewModel.loadDemoTelemetry(units: report.displayUnit)
+                            } else {
+                                await viewModel.refreshFromNightscout()
+                            }
+                        }
+                    } label: {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .help("Refresh Nightscout Telemetry (⌘R)")
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(viewModel.isLoading)
+                }
+                #endif
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: onOpenSettings) {
                         Image(systemName: "gearshape")
                     }
+                    #if os(macOS)
+                    .help("Settings (⌘,)")
+                    .keyboardShortcut(",", modifiers: .command)
+                    #endif
                 }
             }
             .sheet(item: $selectedDetail) { detail in
                 ScheduleDetailSheet(detail: detail)
+                    #if os(iOS)
                     .presentationDetents([.medium])
+                    #else
+                    .frame(minWidth: 460, minHeight: 340)
+                    #endif
             }
         }
     }

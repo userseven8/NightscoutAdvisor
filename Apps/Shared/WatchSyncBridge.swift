@@ -85,8 +85,8 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         #endif
     }
 
+    #if os(iOS) && canImport(WatchConnectivity)
     private func pushLatestFromPhoneIfAvailable(_ session: WCSession) {
-        #if os(iOS) && canImport(WatchConnectivity)
         guard session.activationState == .activated, session.isPaired else { return }
         let creds = AdvisorStore.shared.loadCredentials()
         let cfg = AdvisorStore.shared.loadConfig()
@@ -104,8 +104,8 @@ public final class WatchSyncBridge: NSObject, ObservableObject, @unchecked Senda
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
         }
-        #endif
     }
+    #endif
 
     private func encodePayload(
         summary: WatchAdvisorSummary?,

@@ -190,10 +190,13 @@ struct ScheduleDetailSheet: View {
                     Text("Informational retrospective telemetry summary (#WeAreNotWaiting). Never modify pump or closed-loop parameters without clinician review.")
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle(detail.category)
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
