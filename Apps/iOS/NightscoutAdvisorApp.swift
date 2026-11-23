@@ -2,17 +2,22 @@ import NightscoutAdvisorKit
 import SwiftUI
 #if os(macOS)
 import AppKit
+import ServiceManagement
 #endif
 
 @main
 struct NightscoutAdvisorApp: App {
     @StateObject private var viewModel = AdvisorViewModel()
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(MacAppDelegate.self) private var appDelegate
+    #endif
 
     var body: some Scene {
         #if os(macOS)
-        WindowGroup("NS Advisor", id: "main") {
+        Window("NS Advisor", id: "main") {
             RootContentView(viewModel: viewModel)
                 .frame(minWidth: 640, minHeight: 680)
+                .background(MacMainWindowLifecycleObserver())
         }
         .defaultSize(width: 740, height: 840)
 
@@ -43,8 +48,152 @@ struct NightscoutAdvisorApp: App {
 }
 
 #if os(macOS)
+@MainActor
+final class MacStartupPreferences: ObservableObject {
+    static let shared = MacStartupPreferences()
+
+    private let menuBarOnlyKey = "mac_menu_bar_only_mode_v1"
+
+    @Published var launchAtLogin: Bool {
+        didSet {
+            guard oldValue != launchAtLogin else { return }
+            do {
+                if launchAtLogin {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                // Revert toggle if macOS rejects Login Item registration (e.g. running outside /Applications)
+                let actual = (SMAppService.mainApp.status == .enabled)
+                if launchAtLogin != actual {
+                    launchAtLogin = actual
+                }
+            }
+        }
+    }
+
+    @Published var menuBarOnlyMode: Bool {
+        didSet {
+            UserDefaults.standard.set(menuBarOnlyMode, forKey: menuBarOnlyKey)
+            applyActivationPolicy(mainWindowVisible: Self.isMainWindowVisible)
+        }
+    }
+
+    private init() {
+        self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
+        if UserDefaults.standard.object(forKey: menuBarOnlyKey) == nil {
+            self.menuBarOnlyMode = false
+        } else {
+            self.menuBarOnlyMode = UserDefaults.standard.bool(forKey: menuBarOnlyKey)
+        }
+    }
+
+    func refreshStatusFromSystem() {
+        let actual = (SMAppService.mainApp.status == .enabled)
+        if launchAtLogin != actual {
+            launchAtLogin = actual
+        }
+    }
+
+    static var didHandleInitialLaunch = false
+
+    static var needsOnboarding: Bool {
+        !AdvisorStore.shared.hasAcknowledgedDIYDisclaimer()
+            || (AdvisorStore.shared.loadCredentials().normalizedBaseURL == nil
+                && AdvisorStore.shared.loadCachedReport() == nil)
+    }
+
+    static var isMainWindowVisible: Bool {
+        NSApplication.shared.windows.contains { win in
+            win.isVisible && win.title == "NS Advisor"
+        }
+    }
+
+    func applyActivationPolicy(mainWindowVisible: Bool) {
+        if menuBarOnlyMode && !mainWindowVisible {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        } else {
+            NSApplication.shared.setActivationPolicy(.regular)
+        }
+    }
+}
+
+final class MacAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let menuOnly = UserDefaults.standard.bool(forKey: "mac_menu_bar_only_mode_v1")
+        if menuOnly && !MacStartupPreferences.needsOnboarding {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // Keep running in the top Menu Bar when the main window is closed
+        false
+    }
+}
+
+private struct MacMainWindowLifecycleObserver: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                context.coordinator.observe(window: window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let window = nsView.window {
+                context.coordinator.observe(window: window)
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject {
+        private weak var observedWindow: NSWindow?
+
+        func observe(window: NSWindow) {
+            guard observedWindow !== window else { return }
+            observedWindow = window
+            Task { @MainActor in
+                let prefs = MacStartupPreferences.shared
+                if !MacStartupPreferences.didHandleInitialLaunch {
+                    MacStartupPreferences.didHandleInitialLaunch = true
+                    if prefs.menuBarOnlyMode && !MacStartupPreferences.needsOnboarding {
+                        window.orderOut(nil)
+                        prefs.applyActivationPolicy(mainWindowVisible: false)
+                        return
+                    }
+                }
+                prefs.applyActivationPolicy(mainWindowVisible: true)
+            }
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(windowWillClose(_:)),
+                name: NSWindow.willCloseNotification,
+                object: window
+            )
+        }
+
+        @objc private func windowWillClose(_ notification: Notification) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                MacStartupPreferences.shared.applyActivationPolicy(mainWindowVisible: false)
+            }
+        }
+    }
+}
+
 private struct MacMenuBarPopoverView: View {
     @ObservedObject var viewModel: AdvisorViewModel
+    @ObservedObject private var macPrefs = MacStartupPreferences.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -89,6 +238,16 @@ private struct MacMenuBarPopoverView: View {
                 Divider()
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Launch at Login", isOn: $macPrefs.launchAtLogin)
+                    .toggleStyle(.checkbox)
+                Toggle("Menu Bar Only (Hide Dock & Startup Window)", isOn: $macPrefs.menuBarOnlyMode)
+                    .toggleStyle(.checkbox)
+            }
+            .font(.caption)
+
+            Divider()
+
             HStack {
                 if viewModel.hasAcceptedDIYDisclaimer && viewModel.hasNightscoutURL {
                     Button {
@@ -105,6 +264,7 @@ private struct MacMenuBarPopoverView: View {
                 }
 
                 Button("Open Window") {
+                    NSApplication.shared.setActivationPolicy(.regular)
                     openWindow(id: "main")
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
@@ -118,7 +278,10 @@ private struct MacMenuBarPopoverView: View {
             .font(.caption)
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 330)
+        .onAppear {
+            macPrefs.refreshStatusFromSystem()
+        }
     }
 }
 

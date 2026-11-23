@@ -4,6 +4,9 @@ import SwiftUI
 struct SettingsTabView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: AdvisorViewModel
+    #if os(macOS)
+    @ObservedObject private var macPrefs = MacStartupPreferences.shared
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -69,6 +72,17 @@ struct SettingsTabView: View {
                         Text("mmol/L").tag(BGUnit?.some(.mmolL))
                     }
                 }
+
+                #if os(macOS)
+                Section {
+                    Toggle("Launch Automatically at Login", isOn: $macPrefs.launchAtLogin)
+                    Toggle("Menu Bar Only Mode (Hide Dock & Startup Window)", isOn: $macPrefs.menuBarOnlyMode)
+                } header: {
+                    Text("macOS Startup & Menu Bar")
+                } footer: {
+                    Text("When Menu Bar Only Mode is enabled, NS Advisor starts silently as the top Menu Bar ✓ icon without opening a window or showing in the Dock.")
+                }
+                #endif
 
                 Section("Documentation & Safety") {
                     if let report = viewModel.report {
