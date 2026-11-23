@@ -47,10 +47,15 @@ public struct NightscoutClient: Sendable {
         isoFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         let cutoffISO = isoFormatter.string(from: treatmentsCutoffDate)
 
+        let clampedDays = max(7, rollingDays)
+        let profileLimit = max(200, clampedDays * 5)
+        let cgmLimit = max(15000, clampedDays * 320)
+        let treatmentsLimit = max(10000, clampedDays * 220)
+
         async let profilesData = performGET(
             baseURL: baseURL,
             path: "/api/v1/profile.json",
-            queryItems: [URLQueryItem(name: "count", value: "200")],
+            queryItems: [URLQueryItem(name: "count", value: "\(profileLimit)")],
             credentials: credentials
         )
         async let cgmData = performGET(
@@ -58,7 +63,7 @@ public struct NightscoutClient: Sendable {
             path: "/api/v1/entries/sgv.json",
             queryItems: [
                 URLQueryItem(name: "find[date][$gte]", value: "\(cutoffMillis)"),
-                URLQueryItem(name: "count", value: "15000")
+                URLQueryItem(name: "count", value: "\(cgmLimit)")
             ],
             credentials: credentials
         )
@@ -67,7 +72,7 @@ public struct NightscoutClient: Sendable {
             path: "/api/v1/treatments.json",
             queryItems: [
                 URLQueryItem(name: "find[created_at][$gte]", value: cutoffISO),
-                URLQueryItem(name: "count", value: "10000")
+                URLQueryItem(name: "count", value: "\(treatmentsLimit)")
             ],
             credentials: credentials
         )
@@ -119,7 +124,7 @@ public struct NightscoutClient: Sendable {
         guard let url = comps.url else { throw ClientError.invalidURL }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 35
+        request.timeoutInterval = 50
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let secret = credentials.apiSecretPlaintext.trimmingCharacters(in: .whitespacesAndNewlines)

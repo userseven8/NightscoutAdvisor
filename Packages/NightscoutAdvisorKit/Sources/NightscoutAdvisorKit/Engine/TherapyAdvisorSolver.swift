@@ -339,7 +339,13 @@ public enum TherapyAdvisorSolver {
             if !iterEpisodes.isEmpty {
                 let meanLog = iterEpisodes.map { log($0.impliedISFMgdLPerU) }.reduce(0.0, +) / Double(iterEpisodes.count)
                 geomISF = exp(meanLog)
-                recISF = roundISFToGrid(geomISF)
+                // Require at least N >= 4 isolated corrections before overriding active profile ISF
+                // so a well-controlled window with 1-3 spikes never destabilizes ISF, Basal, or Carb Ratios.
+                if iterEpisodes.count >= 4 {
+                    recISF = roundISFToGrid(geomISF)
+                } else {
+                    recISF = curISF
+                }
             }
         }
 
@@ -357,43 +363,59 @@ public enum TherapyAdvisorSolver {
                 return m >= seg.startMinutes && m < endMin
             }.map(\.impliedISFMgdLPerU)
 
-            let usedEps = blockEps.count >= 3 ? blockEps : solvedEpisodeDetails.map(\.impliedISFMgdLPerU)
+            let usedEps = blockEps.count >= 4 ? blockEps : solvedEpisodeDetails.map(\.impliedISFMgdLPerU)
+            let nEps = usedEps.count
             let geomVal: Double
             let medVal: Double
             let recVal: Double
             let ciLo: Double
             let ciHi: Double
-            if !usedEps.isEmpty {
-                geomVal = exp(usedEps.map { log($0) }.reduce(0.0, +) / Double(usedEps.count))
+            let status: SyncStatus
+            let rationale: String
+
+            if nEps >= 4 {
+                let logs = usedEps.map { log($0) }
+                let meanLog = logs.reduce(0.0, +) / Double(nEps)
+                geomVal = exp(meanLog)
                 medVal = percentile(usedEps.sorted(), p: 0.50)
                 recVal = roundISFToGrid(geomVal)
-                let empMin = usedEps.min() ?? recVal
-                let empMax = usedEps.max() ?? recVal
-                ciLo = empMin.rounded()
-                ciHi = empMax.rounded()
+
+                let df = max(1, nEps - 1)
+                let varLog = logs.reduce(0.0) { $0 + ($1 - meanLog) * ($1 - meanLog) } / Double(df)
+                let seLog = sqrt(varLog / Double(nEps))
+                let tCrit = studentTCrit95(df: df)
+                ciLo = max(10.0, exp(meanLog - tCrit * seLog)).rounded()
+                ciHi = min(600.0, exp(meanLog + tCrit * seLog)).rounded()
+
+                let isISFInCI = (seg.value >= ciLo && seg.value <= ciHi)
+                if abs(seg.value - recVal) < 2.0 {
+                    status = .inSync
+                } else if isISFInCI || abs(seg.value - recVal) <= max(15.0, 0.10 * recVal) {
+                    status = .inConfidenceInterval
+                } else {
+                    status = .adjustRecommended
+                }
+
+                rationale = "Log-normal MLE geometric mean across N=\(nEps) carb-free corrections (\(displayUnit.formatISF(geomVal, includeUnit: true)); Student-t 95% CI \(displayUnit.formatISF(ciLo, includeUnit: false))–\(displayUnit.formatISF(ciHi, includeUnit: true)))."
+            } else if nEps >= 1 {
+                let logs = usedEps.map { log($0) }
+                let meanLog = logs.reduce(0.0, +) / Double(nEps)
+                geomVal = exp(meanLog)
+                medVal = percentile(usedEps.sorted(), p: 0.50)
+                recVal = seg.value
+                ciLo = (usedEps.min() ?? seg.value).rounded()
+                ciHi = (usedEps.max() ?? seg.value).rounded()
+                status = .insufficientData
+                rationale = "Sparse fasting corrections (N=\(nEps) < 4 isolated spikes ≥165 mg/dL; empirical geom. mean \(displayUnit.formatISF(geomVal, includeUnit: true)), observed \(displayUnit.formatISF(ciLo, includeUnit: false))–\(displayUnit.formatISF(ciHi, includeUnit: true))). Anchored to active profile (\(displayUnit.formatISF(seg.value, includeUnit: true))) — increase History Window (e.g. 45–90d) to inspect more episodes."
             } else {
                 geomVal = seg.value
                 medVal = seg.value
                 recVal = seg.value
                 ciLo = seg.value
                 ciHi = seg.value
-            }
-
-            let isISFInCI = (seg.value >= ciLo && seg.value <= ciHi)
-            let status: SyncStatus
-            if usedEps.isEmpty {
                 status = .insufficientData
-            } else if abs(seg.value - recVal) <= max(15.0, 0.10 * recVal) {
-                status = abs(seg.value - recVal) < 2.0 ? .inSync : .inConfidenceInterval
-            } else if isISFInCI {
-                status = .inConfidenceInterval
-            } else {
-                status = .adjustRecommended
+                rationale = "No isolated carb-free correction episodes ≥165 mg/dL (\(winLabel)); anchored to active profile (\(displayUnit.formatISF(seg.value, includeUnit: true)))."
             }
-
-            let rationale = usedEps.isEmpty
-                ? "No isolated carb-free correction episodes (\(winLabel)); retaining active profile setting."
-                : "Exact kinetic log-symmetric geometric mean across N=\(usedEps.count) correction episodes (\(displayUnit.formatISF(geomVal, includeUnit: true)); observed range \(displayUnit.formatISF(ciLo, includeUnit: false))–\(displayUnit.formatISF(ciHi, includeUnit: true)))."
 
             isfRecommendations.append(
                 ISFRecommendation(
@@ -405,7 +427,7 @@ public enum TherapyAdvisorSolver {
                     medianMgdLPerU: medVal,
                     ciLowMgdLPerU: ciLo,
                     ciHighMgdLPerU: ciHi,
-                    episodeCount: usedEps.count,
+                    episodeCount: nEps,
                     status: status,
                     rationale: rationale
                 )

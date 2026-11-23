@@ -64,6 +64,8 @@ struct SettingsTabView: View {
                         Text("14 Days").tag(14)
                         Text("30 Days").tag(30)
                         Text("45 Days").tag(45)
+                        Text("60 Days").tag(60)
+                        Text("90 Days").tag(90)
                     }
 
                     Picker("Units", selection: $viewModel.config.preferredUnitOverride) {
