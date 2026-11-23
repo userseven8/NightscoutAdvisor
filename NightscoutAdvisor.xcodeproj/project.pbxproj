@@ -39,6 +39,10 @@
 		A40000080000000000000001 /* WatchSyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000080000000000000001 /* WatchSyncBridge.swift */; };
 		A40000090000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000040000000000000001 /* NightscoutAdvisorKit */; };
 		A400000B0000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F100000D0000000000000001 /* Assets.xcassets */; };
+
+		A50000010000000000000001 /* NightscoutAdvisorComplications.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000B0000000000000001 /* NightscoutAdvisorComplications.swift */; };
+		A50000020000000000000001 /* NightscoutAdvisorKit in Frameworks */ = {isa = PBXBuildFile; productRef = P10000050000000000000001 /* NightscoutAdvisorKit */; };
+		A100000C0000000000000001 /* NightscoutAdvisorIOSWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F20000040000000000000001 /* NightscoutAdvisorIOSWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +59,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = T30000010000000000000001;
 			remoteInfo = NightscoutAdvisorWatchWidgets;
+		};
+		C10000030000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = R00000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = T50000010000000000000001;
+			remoteInfo = NightscoutAdvisorIOSWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -81,6 +92,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E50000010000000000000001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A100000C0000000000000001 /* NightscoutAdvisorIOSWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -103,6 +125,7 @@
 		F20000010000000000000001 /* NightscoutAdvisorWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NightscoutAdvisorWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NightscoutAdvisorWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000030000000000000001 /* NS Advisor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NS Advisor.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F20000040000000000000001 /* NightscoutAdvisorIOSWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NightscoutAdvisorIOSWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +158,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A40000090000000000000001 /* NightscoutAdvisorKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A50000020000000000000001 /* NightscoutAdvisorKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -226,6 +257,7 @@
 				F20000010000000000000001 /* NightscoutAdvisorWatch.app */,
 				F20000020000000000000001 /* NightscoutAdvisorWatchWidgets.appex */,
 				F20000030000000000000001 /* NS Advisor.app */,
+				F20000040000000000000001 /* NightscoutAdvisorIOSWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -241,11 +273,13 @@
 				B10000010000000000000001 /* Frameworks */,
 				R10000010000000000000001 /* Resources */,
 				E10000010000000000000001 /* Embed Watch Content */,
+				E50000010000000000000001 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				D10000010000000000000001 /* PBXTargetDependency */,
+				D50000010000000000000001 /* PBXTargetDependency */,
 			);
 			name = NightscoutAdvisor;
 			packageProductDependencies = (
@@ -316,6 +350,25 @@
 			productReference = F20000030000000000000001 /* NS Advisor.app */;
 			productType = "com.apple.product-type.application";
 		};
+		T50000010000000000000001 /* NightscoutAdvisorIOSWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = L50000010000000000000001 /* Build configuration list for PBXNativeTarget "NightscoutAdvisorIOSWidgets" */;
+			buildPhases = (
+				S50000010000000000000001 /* Sources */,
+				B50000010000000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NightscoutAdvisorIOSWidgets;
+			packageProductDependencies = (
+				P10000050000000000000001 /* NightscoutAdvisorKit */,
+			);
+			productName = NightscoutAdvisorIOSWidgets;
+			productReference = F20000040000000000000001 /* NightscoutAdvisorIOSWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -346,6 +399,7 @@
 				T20000010000000000000001 /* NightscoutAdvisorWatch */,
 				T30000010000000000000001 /* NightscoutAdvisorWatchWidgets */,
 				T40000010000000000000001 /* NightscoutAdvisorMac */,
+				T50000010000000000000001 /* NightscoutAdvisorIOSWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -426,6 +480,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		S50000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A50000010000000000000001 /* NightscoutAdvisorComplications.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -438,6 +500,11 @@
 			isa = PBXTargetDependency;
 			target = T30000010000000000000001 /* NightscoutAdvisorWatchWidgets */;
 			targetProxy = C10000020000000000000001 /* PBXContainerItemProxy */;
+		};
+		D50000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = T50000010000000000000001 /* NightscoutAdvisorIOSWidgets */;
+			targetProxy = C10000030000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -673,6 +740,47 @@
 			};
 			name = Release;
 		};
+
+		X50000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
+				INFOPLIST_FILE = Apps/WatchWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(IOS_WIDGETS_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		X50000020000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/SharedAppGroup.entitlements;
+				INFOPLIST_FILE = Apps/WatchWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(IOS_WIDGETS_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -721,6 +829,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		L50000010000000000000001 /* Build configuration list for PBXNativeTarget "NightscoutAdvisorIOSWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X50000010000000000000001 /* Debug */,
+				X50000020000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -747,6 +864,11 @@
 			productName = NightscoutAdvisorKit;
 		};
 		P10000040000000000000001 /* NightscoutAdvisorKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = K10000010000000000000001 /* XCLocalSwiftPackageReference "Packages/NightscoutAdvisorKit" */;
+			productName = NightscoutAdvisorKit;
+		};
+		P10000050000000000000001 /* NightscoutAdvisorKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = K10000010000000000000001 /* XCLocalSwiftPackageReference "Packages/NightscoutAdvisorKit" */;
 			productName = NightscoutAdvisorKit;

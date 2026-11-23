@@ -15,12 +15,14 @@ platform :ios do
 
     prefix = ENV.fetch("BUNDLE_ID_PREFIX")
     ios_id = prefix
+    ios_widgets_id = "#{prefix}.ioswidgets"
     watch_id = "#{prefix}.watchkitapp"
     widgets_id = "#{watch_id}.widgets"
     app_group = "group.#{prefix}"
 
     [
       [ios_id, "Nightscout Advisor"],
+      [ios_widgets_id, "NS Advisor iOS Widgets"],
       [watch_id, "NS Advisor"],
       [widgets_id, "NS Advisor Widgets"]
     ].each do |bundle_id, app_name|
@@ -37,7 +39,7 @@ platform :ios do
 
     match(
       type: "appstore",
-      app_identifier: [ios_id, watch_id, widgets_id],
+      app_identifier: [ios_id, ios_widgets_id, watch_id, widgets_id],
       api_key: api_key,
       force_for_new_devices: true
     )

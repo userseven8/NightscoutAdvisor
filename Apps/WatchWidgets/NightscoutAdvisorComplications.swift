@@ -123,6 +123,7 @@ struct AdvisorComplicationEntryView: View {
                 Text("✓ NS Advisor")
             }
 
+        #if os(watchOS)
         case .accessoryCorner:
             if count == 0 {
                 Image(systemName: "checkmark")
@@ -138,6 +139,49 @@ struct AdvisorComplicationEntryView: View {
                         }
                     }
             }
+        #endif
+
+        #if os(iOS)
+        case .systemSmall:
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Image(systemName: count == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
+                        .foregroundStyle(count == 0 ? Color.green : Color.orange)
+                    Text(count == 0 ? "Within 95% CI" : "\(count) Outside CI")
+                        .font(.caption.weight(.bold))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 2)
+
+                if count == 0 {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("ISF \(summary.headlineISF)")
+                            .font(.caption.monospacedDigit().weight(.medium))
+                        Text("Target \(summary.headlineTarget)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(actions.prefix(2)), id: \.self) { act in
+                            Text(act)
+                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(Color.orange)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 2)
+
+                Text("\(summary.effectiveDays)d TIR \(String(format: "%.0f%%", summary.effectiveTIR)) • Low \(String(format: "%.1f%%", summary.effectiveTBR))")
+                    .font(.system(size: 10).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        #endif
 
         default:
             Text(count == 0 ? "✓" : "\(count)")
@@ -165,9 +209,22 @@ struct AdvisorComplicationEntryView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         case .accessoryInline:
             Text("NS Advisor: —")
+        #if os(watchOS)
         case .accessoryCorner:
             Image(systemName: "ellipsis")
                 .foregroundStyle(.secondary)
+        #endif
+        #if os(iOS)
+        case .systemSmall:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("NS Advisor")
+                    .font(.caption.weight(.bold))
+                Text("Open app to connect Nightscout")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        #endif
         default:
             Text("—")
         }
@@ -178,6 +235,22 @@ struct AdvisorComplicationEntryView: View {
 struct NightscoutAdvisorComplicationsBundle: Widget {
     let kind: String = "NightscoutAdvisorComplication"
 
+    #if os(watchOS)
+    private let families: [WidgetFamily] = [
+        .accessoryCircular,
+        .accessoryRectangular,
+        .accessoryInline,
+        .accessoryCorner
+    ]
+    #else
+    private let families: [WidgetFamily] = [
+        .accessoryCircular,
+        .accessoryRectangular,
+        .accessoryInline,
+        .systemSmall
+    ]
+    #endif
+
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: AdvisorComplicationProvider()) { entry in
             AdvisorComplicationEntryView(entry: entry)
@@ -185,11 +258,6 @@ struct NightscoutAdvisorComplicationsBundle: Widget {
         }
         .configurationDisplayName("NS Advisor")
         .description("Displays ✓ when active profile schedules sit within the 95% CI, or the count of windows outside CI.")
-        .supportedFamilies([
-            .accessoryCircular,
-            .accessoryRectangular,
-            .accessoryInline,
-            .accessoryCorner
-        ])
+        .supportedFamilies(families)
     }
 }
