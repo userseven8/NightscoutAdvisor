@@ -181,6 +181,24 @@ public struct NightscoutTelemetryBundle: Codable, Sendable {
         self.exerciseWindows = exerciseWindows.sorted { $0.startTimestamp < $1.startTimestamp }
         self.detectedDosingMode = detectedDosingMode
     }
+
+    public func sliced(rollingDays: Int) -> NightscoutTelemetryBundle {
+        let cutoff = fetchedAt.timeIntervalSince1970 - Double(max(7, rollingDays)) * 86400.0
+        let txCutoff = cutoff - 6.0 * 3600.0
+        return NightscoutTelemetryBundle(
+            fetchedAt: fetchedAt,
+            sourceURL: sourceURL,
+            profiles: profiles,
+            activeProfile: activeProfile,
+            cgmSamples: cgmSamples.filter { $0.timestamp >= cutoff },
+            boluses: boluses.filter { $0.timestamp >= txCutoff },
+            carbs: carbs.filter { $0.timestamp >= txCutoff },
+            tempBasals: tempBasals.filter { $0.endTimestamp > txCutoff },
+            targetOverrides: targetOverrides.filter { $0.endTimestamp > txCutoff },
+            exerciseWindows: exerciseWindows.filter { $0.endTimestamp > txCutoff },
+            detectedDosingMode: detectedDosingMode
+        )
+    }
 }
 
 private func tempBasalSorted(_ items: [TempBasalEvent]) -> [TempBasalEvent] {

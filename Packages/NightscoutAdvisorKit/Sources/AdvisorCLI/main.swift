@@ -15,6 +15,7 @@ private func printUsage() {
           --url <url>           Nightscout base URL
           --demo                Synthesize deterministic 30-day demo telemetry
           --days <int>          Rolling window in days (default: 30)
+          --multi-days <csv>    Solve multiple windows from one fetch (e.g. 14,30,45,60,90)
           --tz <iana_id>        Preferred IANA timezone override (e.g. Europe/Athens)
           --peak <minutes>      Insulin peak activity in minutes (default: 55)
           --dia <minutes>       Insulin duration of action in minutes (default: 360)
@@ -33,6 +34,7 @@ struct AdvisorCLIMain {
         var urlString = ""
         var useDemo = false
         var rollingDays = 30
+        var multiDaysList: [Int] = []
         var tzOverride: String?
         var peakMinutes = 55.0
         var diaMinutes = 360.0
@@ -58,6 +60,14 @@ struct AdvisorCLIMain {
             case "--days":
                 guard i + 1 < args.count, let v = Int(args[i + 1]) else { printUsage(); exit(2) }
                 rollingDays = max(7, v)
+                i += 2
+            case "--multi-days":
+                guard i + 1 < args.count else { printUsage(); exit(2) }
+                multiDaysList = args[i + 1]
+                    .split(separator: ",")
+                    .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                    .map { max(7, $0) }
+                guard !multiDaysList.isEmpty else { printUsage(); exit(2) }
                 i += 2
             case "--tz":
                 guard i + 1 < args.count else { printUsage(); exit(2) }
@@ -109,13 +119,15 @@ struct AdvisorCLIMain {
             ? .lyumjevFiasp
             : .custom
 
+        let fetchDays = multiDaysList.max() ?? rollingDays
+
         let config = TherapySettingsConfig(
             insulinPreset: preset,
             customPeakMinutes: peakMinutes,
             customDIAMinutes: diaMinutes,
             pumpQuantum: stepQuantum,
             dosingMode: .automaticBolus,
-            rollingDays: rollingDays,
+            rollingDays: fetchDays,
             preferredUnitOverride: nil,
             preferredTimeZoneIdentifier: tzOverride
         )
@@ -123,39 +135,62 @@ struct AdvisorCLIMain {
         do {
             let bundle: NightscoutTelemetryBundle
             if useDemo {
-                logStderr("[advisor-cli] Generating deterministic \(rollingDays)-day demo telemetry...")
-                bundle = DemoTelemetryGenerator.makeSyntheticBundle(days: rollingDays)
+                logStderr("[advisor-cli] Generating deterministic \(fetchDays)-day demo telemetry...")
+                bundle = DemoTelemetryGenerator.makeSyntheticBundle(days: fetchDays)
             } else {
                 let creds = NightscoutCredentials(
                     baseURLString: urlString,
                     apiToken: apiToken,
                     apiSecretPlaintext: apiSecret
                 )
-                logStderr("[advisor-cli] Fetching rolling \(rollingDays)-day telemetry from Nightscout...")
+                logStderr("[advisor-cli] Fetching rolling \(fetchDays)-day telemetry from Nightscout...")
                 bundle = try await NightscoutClient().fetchTelemetry(
                     credentials: creds,
-                    rollingDays: rollingDays
+                    rollingDays: fetchDays
                 )
                 logStderr("[advisor-cli] Loaded \(bundle.cgmSamples.count) CGM samples, \(bundle.boluses.count) boluses, \(bundle.carbs.count) carb entries.")
             }
 
-            let report = try TherapyAdvisorSolver.solve(bundle: bundle, config: config)
-            logStderr(
-                String(
-                    format: "[advisor-cli] Solved %d-day report (TZ=%@, TIR=%.1f%%, ISF=%.0f, ζ=%.2f, aligned=%d/4).",
-                    report.rollingDays,
-                    report.timeZoneIdentifier,
-                    report.statsRolling.tirPercent,
-                    report.globalISF.recommendedMgdLPerU,
-                    report.stability.dampingRatioZeta,
-                    report.alignedSectionCount
-                )
-            )
-
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .secondsSince1970
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let jsonData = try encoder.encode(report)
+
+            let jsonData: Data
+            if !multiDaysList.isEmpty {
+                var multiMap: [String: AdvisorReport] = [:]
+                for d in multiDaysList {
+                    var cfgD = config
+                    cfgD.rollingDays = d
+                    let sliced = (d == fetchDays) ? bundle : bundle.sliced(rollingDays: d)
+                    let rep = try TherapyAdvisorSolver.solve(bundle: sliced, config: cfgD)
+                    logStderr(
+                        String(
+                            format: "[advisor-cli] Solved %dd report (TIR=%.1f%%, ISF=%.0f [N=%d], aligned=%d/4).",
+                            d,
+                            rep.statsRolling.tirPercent,
+                            rep.globalISF.recommendedMgdLPerU,
+                            rep.globalISF.episodeCount,
+                            rep.alignedSectionCount
+                        )
+                    )
+                    multiMap["\(d)"] = rep
+                }
+                jsonData = try encoder.encode(multiMap)
+            } else {
+                let report = try TherapyAdvisorSolver.solve(bundle: bundle, config: config)
+                logStderr(
+                    String(
+                        format: "[advisor-cli] Solved %d-day report (TZ=%@, TIR=%.1f%%, ISF=%.0f, ζ=%.2f, aligned=%d/4).",
+                        report.rollingDays,
+                        report.timeZoneIdentifier,
+                        report.statsRolling.tirPercent,
+                        report.globalISF.recommendedMgdLPerU,
+                        report.stability.dampingRatioZeta,
+                        report.alignedSectionCount
+                    )
+                )
+                jsonData = try encoder.encode(report)
+            }
 
             if let outPath = outputPath {
                 try jsonData.write(to: URL(fileURLWithPath: outPath), options: .atomic)
