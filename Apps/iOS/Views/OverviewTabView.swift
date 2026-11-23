@@ -15,118 +15,131 @@ struct OverviewTabView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                // 1. Unified History Window Statistics + 24-Hour AGP Together
-                Section("Last \(report.rollingDays) Days") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 0) {
-                            SimpleMetricColumn(
-                                label: "In Range",
-                                value: String(format: "%.1f%%", stats.tirPercent),
-                                valueColor: stats.tirPercent >= 70.0 ? Color.green : Color.primary
-                            )
-                            SimpleMetricColumn(
-                                label: "Low <70",
-                                value: String(format: "%.1f%%", stats.tbrPercent),
-                                valueColor: stats.tbrPercent <= 4.0 ? Color.primary : Color.red
-                            )
-                            SimpleMetricColumn(
-                                label: "Average",
-                                value: report.displayUnit.formatBG(stats.meanMgdL),
-                                valueColor: Color.primary
-                            )
-                            SimpleMetricColumn(
-                                label: "GMI",
-                                value: String(format: "%.1f%%", stats.gmiPercent),
-                                valueColor: Color.secondary
-                            )
-                        }
-
-                        Divider()
-
-                        MinimalAGPChart(bins: report.agpBins, unit: report.displayUnit)
+            overviewContainer
+                .navigationTitle("NS Advisor")
+                .refreshable {
+                    if viewModel.isDemoMode && !viewModel.hasNightscoutURL {
+                        await viewModel.loadDemoTelemetry(units: report.displayUnit)
+                    } else {
+                        await viewModel.refreshFromNightscout()
                     }
-                    .padding(.vertical, 6)
                 }
-
-                // 2. Retrospective Statistical Alignment Summary
-                Section {
-                    HStack(spacing: 10) {
-                        let changes = report.totalAdjustmentsCount
-                        Image(systemName: changes == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(changes == 0 ? Color.green : Color.orange)
-                        Text(changes == 0 ? "All Schedules Within 95% CI" : "\(changes) Window\(changes == 1 ? "" : "s") Outside 95% CI")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                    }
-                    .padding(.vertical, 2)
-                } footer: {
-                    Text("Retrospective statistical estimates only — not medical advice. Always review therapy settings with a qualified clinician.")
-                }
-
-                // 3. Clean Single-Line Therapy Schedules
-                SchedulesSectionGroup(
-                    report: report,
-                    onSelectDetail: { selectedDetail = $0 }
-                )
-            }
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
-            .navigationTitle("NS Advisor")
-            .refreshable {
-                if viewModel.isDemoMode && !viewModel.hasNightscoutURL {
-                    await viewModel.loadDemoTelemetry(units: report.displayUnit)
-                } else {
-                    await viewModel.refreshFromNightscout()
-                }
-            }
-            .toolbar {
-                #if os(macOS)
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task {
-                            if viewModel.isDemoMode && !viewModel.hasNightscoutURL {
-                                await viewModel.loadDemoTelemetry(units: report.displayUnit)
+                .toolbar {
+                    #if os(macOS)
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            Task {
+                                if viewModel.isDemoMode && !viewModel.hasNightscoutURL {
+                                    await viewModel.loadDemoTelemetry(units: report.displayUnit)
+                                } else {
+                                    await viewModel.refreshFromNightscout()
+                                }
+                            }
+                        } label: {
+                            if viewModel.isLoading {
+                                ProgressView()
+                                    .controlSize(.small)
                             } else {
-                                await viewModel.refreshFromNightscout()
+                                Image(systemName: "arrow.clockwise")
                             }
                         }
-                    } label: {
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
+                        .help("Refresh Nightscout Telemetry (⌘R)")
+                        .keyboardShortcut("r", modifiers: .command)
+                        .disabled(viewModel.isLoading)
+                    }
+                    #endif
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: onOpenSettings) {
+                            Image(systemName: "gearshape")
                         }
+                        #if os(macOS)
+                        .help("Settings (⌘,)")
+                        .keyboardShortcut(",", modifiers: .command)
+                        #endif
                     }
-                    .help("Refresh Nightscout Telemetry (⌘R)")
-                    .keyboardShortcut("r", modifiers: .command)
-                    .disabled(viewModel.isLoading)
                 }
-                #endif
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: onOpenSettings) {
-                        Image(systemName: "gearshape")
-                    }
-                    #if os(macOS)
-                    .help("Settings (⌘,)")
-                    .keyboardShortcut(",", modifiers: .command)
-                    #endif
+                .sheet(item: $selectedDetail) { detail in
+                    ScheduleDetailSheet(detail: detail)
+                        #if os(iOS)
+                        .presentationDetents([.medium])
+                        #else
+                        .frame(minWidth: 460, minHeight: 340)
+                        #endif
                 }
-            }
-            .sheet(item: $selectedDetail) { detail in
-                ScheduleDetailSheet(detail: detail)
-                    #if os(iOS)
-                    .presentationDetents([.medium])
-                    #else
-                    .frame(minWidth: 460, minHeight: 340)
-                    #endif
-            }
         }
+    }
+
+    @ViewBuilder
+    private var overviewContainer: some View {
+        #if os(macOS)
+        Form {
+            overviewSections
+        }
+        .formStyle(.grouped)
+        #else
+        List {
+            overviewSections
+        }
+        .listStyle(.insetGrouped)
+        #endif
+    }
+
+    @ViewBuilder
+    private var overviewSections: some View {
+        // 1. Unified History Window Statistics + 24-Hour AGP Together
+        Section("Last \(report.rollingDays) Days") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 0) {
+                    SimpleMetricColumn(
+                        label: "In Range",
+                        value: String(format: "%.1f%%", stats.tirPercent),
+                        valueColor: stats.tirPercent >= 70.0 ? Color.green : Color.primary
+                    )
+                    SimpleMetricColumn(
+                        label: "Low <70",
+                        value: String(format: "%.1f%%", stats.tbrPercent),
+                        valueColor: stats.tbrPercent <= 4.0 ? Color.primary : Color.red
+                    )
+                    SimpleMetricColumn(
+                        label: "Average",
+                        value: report.displayUnit.formatBG(stats.meanMgdL),
+                        valueColor: Color.primary
+                    )
+                    SimpleMetricColumn(
+                        label: "GMI",
+                        value: String(format: "%.1f%%", stats.gmiPercent),
+                        valueColor: Color.secondary
+                    )
+                }
+
+                Divider()
+
+                MinimalAGPChart(bins: report.agpBins, unit: report.displayUnit)
+            }
+            .padding(.vertical, 6)
+        }
+
+        // 2. Retrospective Statistical Alignment Summary
+        Section {
+            HStack(spacing: 10) {
+                let changes = report.totalAdjustmentsCount
+                Image(systemName: changes == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(changes == 0 ? Color.green : Color.orange)
+                Text(changes == 0 ? "All Schedules Within 95% CI" : "\(changes) Window\(changes == 1 ? "" : "s") Outside 95% CI")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+            }
+            .padding(.vertical, 2)
+        } footer: {
+            Text("Retrospective statistical estimates only — not medical advice. Always review therapy settings with a qualified clinician.")
+        }
+
+        // 3. Clean Single-Line Therapy Schedules
+        SchedulesSectionGroup(
+            report: report,
+            onSelectDetail: { selectedDetail = $0 }
+        )
     }
 }
 

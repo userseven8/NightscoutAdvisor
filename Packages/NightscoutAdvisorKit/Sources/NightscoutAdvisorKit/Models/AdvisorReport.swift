@@ -121,7 +121,7 @@ public struct ISFEpisodeDetail: Codable, Equatable, Sendable {
 }
 
 public struct ISFRecommendation: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { timeString }
+    public var id: String { "isf-\(timeString)" }
     public let timeString: String
     public let windowLabel: String
     public let currentMgdLPerU: Double
@@ -136,7 +136,7 @@ public struct ISFRecommendation: Codable, Equatable, Identifiable, Sendable {
 }
 
 public struct BasalRecommendation: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { timeString }
+    public var id: String { "basal-\(timeString)" }
     public let timeString: String
     public let windowLabel: String
     public let currentUnitsPerHour: Double
@@ -151,7 +151,7 @@ public struct BasalRecommendation: Codable, Equatable, Identifiable, Sendable {
 }
 
 public struct CarbRatioRecommendation: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { timeString }
+    public var id: String { "cr-\(timeString)" }
     public let timeString: String
     public let windowLabel: String
     public let currentGramsPerUnit: Double
@@ -171,7 +171,7 @@ public struct CarbRatioRecommendation: Codable, Equatable, Identifiable, Sendabl
 }
 
 public struct TargetRangeRecommendation: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { timeString }
+    public var id: String { "target-\(timeString)" }
     public let timeString: String
     public let windowLabel: String
     public let currentLowMgdL: Double

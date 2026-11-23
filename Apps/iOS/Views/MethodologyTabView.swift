@@ -6,7 +6,7 @@ struct MethodologyTabView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            Form {
                 Section("Open-Source Clinical Disclaimer") {
                     Text("Nightscout Advisor is an open-source educational and retrospective telemetry analysis tool (#WeAreNotWaiting). It is not FDA-cleared or CE-marked medical advice. Always review closed-loop parameter adjustments with your endocrinology care team.")
                         .font(.footnote)
@@ -41,9 +41,7 @@ struct MethodologyTabView: View {
                     )
                 }
             }
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #endif
+            .formStyle(.grouped)
             .navigationTitle("Methodology")
         }
     }
